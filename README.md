@@ -1,34 +1,49 @@
-# 📦 MSIParse: The universal MSI inspector
-
+# 📦 msiparse: The universal MSI inspector
 
 <p align="center">
-  <img src="assets/logo.png" width="200" style="border-radius: 20%; filter: drop-shadow(0 0 8px rgba(0,0,0,0.3));" alt="Project Logo"/>
+  <img src="assets/logo.png" width="200" alt="Project Logo"/>
 </p>
 
 ---
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/your-username/your-repo/ci.yml?branch=main)](https://github.com/filescanio/msiparse/actions)
-[![License](https://img.shields.io/github/license/your-username/your-repo)](LICENSE.txt)
+[![Build Status](https://github.com/filescanio/msiparse/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/filescanio/msiparse/actions/workflows/rust.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-%23DEA584?logo=rust&logoColor=white&style=flat-square)](https://www.rust-lang.org/)
 
 ## 🚀 Overview
 
-`MSIParse` is a command-line interface (CLI) tool designed to parse and inspect MSI files. With this tool, you can:
+`msiparse` is a universal command-line interface (CLI) tool designed to parse and inspect MSI files.
 
-- List and extract all embedded streams.
-- List and dump contents of tables.
-- Retrieve metadata information.
-- Do all the above in a cross-platform, standardized way
+Unlike any other alternatives, this tool features:
+- **Cross-Platform Compatibility**: Runs seamlessly on Windows, Linux, and macOS, unlike ANY other alternatives.
+- **Comprehensive Extraction**: Capable of Listing and extracting both installed files and embedded tables.
+- **Advanced Malware Analysis**: By inspecting the tables and embedded files you can potentially detect malicious CustomAction entries, uncovering even LOLBIN-based threats that might not be part of the installer itself.
+- **Automation-Ready**: Outputs JSON for easy integration, and communication - eliminating the need to parse complex ASCII art.
+
+## 🚀 Alternatives
+
+Several alternative tools exist, but they come with notable limitations regarding operating system compatibility or features. Most alternatives are designed specifically for **Windows**, which can restrict their usage across multiple platforms. Below is a list of some popular alternatives, along with their OS dependencies:
+
+- **[7z](https://www.7-zip.org/)** - 🖥️ 🐧 Cross platform, file extraction works great, but no tables/metadata extraction
+- **[Orca](https://learn.microsoft.com/en-us/windows/win32/msi/orca-exe)** - 🖥️ Windows only
+- **[msitools](https://github.com/GNOME/msitools)** - 🐧 Primarily Linux, may be built on windows, but non-trivial to do so
+- **[lessmsi](https://github.com/activescott/lessmsi)** - 🖥️ Windows only
+- **[MsiQuery](https://github.com/forderud/MsiQuery)** - 🖥️ Windows only
+- **[msidump](https://github.com/mgeeky/msidump)** - 🖥️ Windows only
+- **[jsMSIx](https://www.jsware.net/jsware/msicode.html)** - 🖥️ Windows only
+- **[MsiAnalyzer](https://github.com/radkum/MsiAnalyzer)** - ❌ Should be cross-platform - interesting, but abandoned.
+- **[msi-utils](https://github.com/MSAdministrator/msi-utils)** - ❌ Wrapper around other single-platform tools
+
 
 ## 📂 Usage & Features
 
-```batch
+```bash
 Parse and inspect MSI files
 
-Usage: msiparse <COMMAND>
+Usage: msiparse <COMMAND> <INPUT_FILE>
 
 Commands:
-  list_metadata  List all the metadata the file has
+  list_metadata  List all the metadata the file contains
   list_streams   List all the embedded streams, which can be extracted from the binary
   list_tables    List all the tables and its contents embedded into the msi binary
   extract_all    Extract all the embedded binaries
@@ -50,19 +65,6 @@ cd msiparse
 cargo build --release
 ```
 
-## 🚀 Alternatives
-
-Several alternative tools exist, but they come with notable limitations regarding operating system compatibility. Most alternatives are designed specifically for either **Linux** or **Windows**, which can restrict their usage across multiple platforms. Below is a list of some popular alternatives, along with their OS dependencies:
-
-- **[7z](https://www.7-zip.org/)** - 🖥️ 🐧 Cross platform, file extraction works great, but no tables/metadata extraction
-- **[Orca](https://learn.microsoft.com/en-us/windows/win32/msi/orca-exe)** - 🖥️ Windows only
-- **[msitools](https://github.com/GNOME/msitools)** - 🐧 Primarily Linux, may be built on windows, but non-trivial to do so
-- **[lessmsi](https://github.com/activescott/lessmsi)** - 🖥️ Windows only
-- **[MsiQuery](https://github.com/forderud/MsiQuery)** - 🖥️ Windows only
-- **[msidump](https://github.com/mgeeky/msidump)** - 🖥️ Windows only
-- **[jsMSIx](https://www.jsware.net/jsware/msicode.html)** - 🖥️ Windows only
-- **[MsiAnalyzer](https://github.com/radkum/MsiAnalyzer)** - ❌ Should be cross-platform - interesting, but abandoned.
-- **[msi-utils](https://github.com/MSAdministrator/msi-utils)** - ❌ Wrapper around other single-platform tools
 
 ## 📃 License
 
@@ -70,7 +72,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE.txt)
 
 ## 📫 Contact
 
-For any questions or feedback, feel free to open an issue.
+For any questions or feedback, feel free to open an issue or a PR.
 
 ## 🙏 Acknowledgements
 
@@ -78,4 +80,4 @@ This project wouldn't have been possible without the incredible work of the [MSI
 
 <br><br>
 
-_Made with ❤️ and Rust._
+_Made with ❤️ and 🦀._

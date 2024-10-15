@@ -18,10 +18,10 @@ jobs:
             os: windows-latest
             target: x86_64-pc-windows-msvc
             skip_tests: true
-          # - os_name: macOS-x86_64
-          #   os: macOS-latest
-          #   target: x86_64-apple-darwin
-          #   skip_tests: true
+          - os_name: macOS-x86_64
+            os: macOS-latest
+            target: x86_64-apple-darwin
+            skip_tests: true
           - os_name: Linux-x86_64
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
@@ -41,5 +41,7 @@ jobs:
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: rustre
-          path: target/${{ matrix.platform.target }}/release
+          name: msiparse-${{ matrix.platform.target }}.zip
+          path: |
+            target/${{ matrix.platform.target }}/release/msiparse*
+            !target/${{ matrix.platform.target }}/release/msiparse.d
