@@ -1,6 +1,6 @@
 [package]
 name = "msiparse"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "A cross-platform tool to extract embedded files and tables from MSI files"
 authors = ["Roland Győrffi <roland.gyorffi@opswat.com>"]

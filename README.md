@@ -1,4 +1,4 @@
-# 📦 MSIParse: The universal MSI inspector
+# 📦 msiparse: The universal MSI inspector
 
 
 <p align="center">
@@ -7,13 +7,13 @@
 
 ---
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/your-username/your-repo/ci.yml?branch=main)](https://github.com/filescanio/msiparse/actions)
-[![License](https://img.shields.io/github/license/your-username/your-repo)](LICENSE.txt)
+[![Build Status](https://github.com/filescanio/msiparse/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/filescanio/msiparse/actions/workflows/rust.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-%23DEA584?logo=rust&logoColor=white&style=flat-square)](https://www.rust-lang.org/)
 
 ## 🚀 Overview
 
-`MSIParse` is a command-line interface (CLI) tool designed to parse and inspect MSI files. With this tool, you can:
+`msiparse` is a universal command-line interface (CLI) tool designed to parse and inspect MSI files. With this tool, you can:
 
 - List and extract all embedded streams.
 - List and dump contents of tables.
@@ -22,7 +22,7 @@
 
 ## 📂 Usage & Features
 
-```batch
+```bash
 Parse and inspect MSI files
 
 Usage: msiparse <COMMAND>
