@@ -1,7 +1,6 @@
 import os
 import tempfile
 import shutil
-import hashlib
 import webbrowser
 from pathlib import Path
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
@@ -10,28 +9,17 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLa
 from PyQt5.QtCore import Qt, QPoint
 import magika
 
+# Import common utilities
+from utils.common import format_file_size, calculate_sha1
+from utils.preview import (show_hex_view_dialog, show_text_preview_dialog, 
+                          show_image_preview_dialog)
+
 # Try to import libarchive for archive handling
 try:
     import libarchive
     LIBARCHIVE_AVAILABLE = True
 except (ImportError, TypeError):
     LIBARCHIVE_AVAILABLE = False
-
-def format_file_size(size_bytes):
-    """Format file size in a human-readable format"""
-    if size_bytes < 1024:
-        return f"{size_bytes} B"
-    elif size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.1f} KB"
-    elif size_bytes < 1024 * 1024 * 1024:
-        return f"{size_bytes / (1024 * 1024):.1f} MB"
-    else:
-        return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
-
-# Forward declarations for functions that will be imported later to avoid circular imports
-show_hex_view_dialog = None
-show_text_preview_dialog = None
-show_image_preview_dialog = None
 
 class ArchivePreviewDialog(QDialog):
     """Dialog for displaying archive contents"""
@@ -296,7 +284,7 @@ class ArchivePreviewDialog(QDialog):
                 # Create a file item
                 file_item = QTreeWidgetItem(parent_item if isinstance(parent_item, QTreeWidget) else parent_item)
                 file_item.setText(0, file_name)
-                file_item.setText(3, self.format_size(size))
+                file_item.setText(3, format_file_size(size))
                 # Initialize empty group, MIME type, and SHA1 hash
                 file_item.setText(1, "")  # Group
                 file_item.setText(2, "")  # MIME type
@@ -308,10 +296,6 @@ class ArchivePreviewDialog(QDialog):
                 # Set a default icon
                 file_item.setIcon(0, self.group_icons['unknown'])
                 
-    def format_size(self, size_bytes):
-        """Format file size in a human-readable format"""
-        return format_file_size(size_bytes)
-            
     def show_context_menu(self, position):
         """Show context menu for the contents tree"""
         # Get the item at the position
@@ -517,12 +501,7 @@ class ArchivePreviewDialog(QDialog):
             mime_type = result.output.mime_type
             
             # Calculate SHA1 hash
-            sha1_hash = ""
-            try:
-                with open(file_path, 'rb') as f:
-                    sha1_hash = hashlib.sha1(f.read()).hexdigest()
-            except Exception:
-                sha1_hash = "Error calculating hash"
+            sha1_hash = calculate_sha1(file_path)
             
             # Update the item
             item.setText(1, group)
@@ -544,73 +523,18 @@ class ArchivePreviewDialog(QDialog):
             
     def show_hex_view(self, item):
         """Show hex view of the selected file"""
-        global show_hex_view_dialog
-        if show_hex_view_dialog is None:
-            # Import at first use to avoid circular imports
-            from dialogs.hex import HexViewDialog
-            def show_hex_view_dialog(parent, file_name, file_path):
-                try:
-                    with open(file_path, 'rb') as f:
-                        content = f.read()
-                    hex_dialog = HexViewDialog(parent, file_name, content)
-                    hex_dialog.exec_()
-                    return True
-                except Exception as e:
-                    QMessageBox.critical(parent, "Error", f"Error showing hex view: {str(e)}")
-                    return False
-        
         file_path = self.extract_file(item)
         if file_path:
             show_hex_view_dialog(self, item.text(0), file_path)
         
     def show_image_preview(self, item):
         """Show image preview of the selected file"""
-        global show_image_preview_dialog
-        if show_image_preview_dialog is None:
-            # Import at first use to avoid circular imports
-            from dialogs.image import ImagePreviewDialog
-            def show_image_preview_dialog(parent, file_name, file_path):
-                try:
-                    image_dialog = ImagePreviewDialog(parent, file_name, file_path)
-                    image_dialog.exec_()
-                    return True
-                except Exception as e:
-                    QMessageBox.critical(parent, "Error", f"Error showing image preview: {str(e)}")
-                    return False
-        
         file_path = self.extract_file(item)
         if file_path:
             show_image_preview_dialog(self, item.text(0), file_path)
         
     def show_text_preview(self, item):
         """Show text preview of the selected file"""
-        global show_text_preview_dialog
-        if show_text_preview_dialog is None:
-            # Import at first use to avoid circular imports
-            from dialogs.text import TextPreviewDialog
-            def show_text_preview_dialog(parent, file_name, file_path):
-                content = None
-                try:
-                    # First try to read as UTF-8
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                except UnicodeDecodeError:
-                    # If UTF-8 fails, try with Latin-1 (which should always work)
-                    try:
-                        with open(file_path, 'r', encoding='latin-1') as f:
-                            content = f.read()
-                    except Exception:
-                        # If all fails, return None
-                        pass
-                
-                if content is None:
-                    QMessageBox.warning(parent, "Error", "Failed to read text file")
-                    return False
-                    
-                text_dialog = TextPreviewDialog(parent, file_name, content)
-                text_dialog.exec_()
-                return True
-        
         file_path = self.extract_file(item)
         if file_path:
             show_text_preview_dialog(self, item.text(0), file_path)
@@ -636,8 +560,8 @@ class ArchivePreviewDialog(QDialog):
             self.status_label.setText(f"Opening nested archive: {item.text(0)}")
             
             # Show archive preview dialog
-            archive_dialog = ArchivePreviewDialog(self.parent, item.text(0), file_path, self.group_icons)
-            archive_dialog.exec_()
+            from utils.preview import show_archive_preview_dialog
+            show_archive_preview_dialog(self.parent, item.text(0), file_path, self.group_icons)
             
         except Exception as e:
             self.progress_bar.setVisible(False)

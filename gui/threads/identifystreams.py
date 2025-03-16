@@ -1,21 +1,10 @@
 import subprocess
 import tempfile
-import hashlib
 import shutil
 from pathlib import Path
 from PyQt5.QtCore import QThread, pyqtSignal
 import magika
-
-def format_file_size(size_bytes):
-    """Format file size in a human-readable format"""
-    if size_bytes < 1024:
-        return f"{size_bytes} B"
-    elif size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.1f} KB"
-    elif size_bytes < 1024 * 1024 * 1024:
-        return f"{size_bytes / (1024 * 1024):.1f} MB"
-    else:
-        return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
+from utils.common import format_file_size, calculate_sha1
 
 class IdentifyStreamsThread(QThread):
     """Thread for identifying stream file types"""
@@ -76,15 +65,10 @@ class IdentifyStreamsThread(QThread):
                         try:
                             # Get file size
                             file_size = file_path.stat().st_size
-                            file_size_str = self.format_file_size(file_size)
+                            file_size_str = format_file_size(file_size)
                             
                             # Calculate SHA1 hash
-                            sha1_hash = ""
-                            try:
-                                with open(file_path, 'rb') as f:
-                                    sha1_hash = hashlib.sha1(f.read()).hexdigest()
-                            except Exception:
-                                sha1_hash = "Error calculating hash"
+                            sha1_hash = calculate_sha1(file_path)
                             
                             # Identify file type using magika with Path object
                             result = self.magika_client.identify_path(file_path)
@@ -119,10 +103,6 @@ class IdentifyStreamsThread(QThread):
                 shutil.rmtree(temp_dir)
             except:
                 pass
-                
-    def format_file_size(self, size_bytes):
-        """Format file size in a human-readable format"""
-        return format_file_size(size_bytes)
                 
     def stop(self):
         """Stop the thread safely"""
