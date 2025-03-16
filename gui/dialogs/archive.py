@@ -459,36 +459,52 @@ class ArchivePreviewDialog(QDialog):
         self.status_label.setText(f"Copied to clipboard: {text[:30]}{'...' if len(text) > 30 else ''}")
         
     def extract_file(self, item):
-        """Extract a file from the archive to a temporary location"""
+        """Extract a file from the archive to a temporary directory"""
+        # Get the full path from the item data
         full_path = item.data(0, Qt.UserRole)
         if not full_path:
+            QMessageBox.warning(self, "Error", "No file path found for this item")
             return None
             
-        file_name = item.text(0)
-        output_path = os.path.join(self.temp_dir, file_name)
-        
-        # Check if already extracted
-        if os.path.exists(output_path):
-            return output_path
-            
         try:
+            # Create a temporary directory if needed
+            if not self.temp_dir:
+                self.temp_dir = tempfile.mkdtemp()
+                
             # Extract the file
-            with libarchive.file_reader(self.archive_path) as archive:
-                for entry in archive:
-                    if entry.pathname == full_path:
-                        # Create parent directories if needed
-                        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                        
-                        # Extract the file
-                        with open(output_path, 'wb') as f:
-                            for block in entry.get_blocks():
-                                f.write(block)
-                        
-                        # Add to the set of extracted files for cleanup
-                        self.extracted_files.add(output_path)
-                        break
-                        
-            return output_path
+            output_path = os.path.join(self.temp_dir, os.path.basename(full_path))
+            
+            # Check if parent has extract_stream_unified method
+            if hasattr(self.parent, 'extract_stream_unified'):
+                # Use parent's unified extraction method
+                return self.parent.extract_stream_unified(
+                    full_path,  # stream name
+                    self.temp_dir,  # output directory
+                    temp=False,
+                    show_messages=False
+                )
+            else:
+                # Fallback to direct extraction using libarchive
+                with open(self.archive_path, 'rb') as archive_file:
+                    with libarchive.Archive(archive_file) as archive:
+                        for entry in archive:
+                            if entry.pathname == full_path:
+                                # Create parent directories if needed
+                                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                                
+                                # Extract the file
+                                with open(output_path, 'wb') as output_file:
+                                    for block in entry.get_blocks():
+                                        output_file.write(block)
+                                        
+                                # Add to extracted files set
+                                self.extracted_files.add(output_path)
+                                return output_path
+                                
+            # File not found in archive
+            QMessageBox.warning(self, "Error", f"File not found in archive: {full_path}")
+            return None
+            
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to extract file: {str(e)}")
             return None

@@ -279,10 +279,19 @@ class MSIParseGUI(QMainWindow):
         streams_button_layout = QHBoxLayout()
         
         # Add Identify Streams button
-        self.identify_streams_button = QPushButton("Identify Streams")
+        self.identify_streams_button = QPushButton("Identify Stream Types")
         self.identify_streams_button.clicked.connect(self.identify_streams)
         streams_button_layout.addWidget(self.identify_streams_button)
         
+        # Add Reset Order button
+        self.reset_order_button = QPushButton("Reset to Original Order")
+        self.reset_order_button.clicked.connect(self.reset_to_original_order)
+        streams_button_layout.addWidget(self.reset_order_button)
+        
+        # Add spacer to separate button groups
+        streams_button_layout.addStretch()
+        
+        # Add Extract All button
         self.extract_all_button = QPushButton("Extract All Streams")
         self.extract_all_button.clicked.connect(self.extract_all_streams)
         streams_button_layout.addWidget(self.extract_all_button)
@@ -299,6 +308,9 @@ class MSIParseGUI(QMainWindow):
         self.streams_tree.setHeaderLabels(["Stream Name", "Group", "MIME Type", "File Size", "SHA1 Hash"])
         self.streams_tree.itemClicked.connect(self.stream_selected)
         self.streams_tree.setSelectionMode(QTreeWidget.ExtendedSelection)  # Allow multiple selection
+        
+        # Connect to selectionChanged signal to handle multiple selection
+        self.streams_tree.itemSelectionChanged.connect(self.on_stream_selection_changed)
         
         # Enable context menu for streams tree
         self.streams_tree.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -372,23 +384,41 @@ class MSIParseGUI(QMainWindow):
         self.update_button_states()
         
     def update_button_states(self):
-        has_file = self.msi_file_path is not None
-        has_selected_streams = len(self.streams_tree.selectedItems()) > 0
-        has_tables = self.tables_data is not None and len(self.tables_data) > 0
-        has_selected_table = self.table_list.currentItem() is not None
-        
-        # Check if any selected stream has a hash
-        has_hash = False
-        for item in self.streams_tree.selectedItems():
-            if item.text(4) and item.text(4) != "Error calculating hash" and item.text(4) != "":
-                has_hash = True
-                break
-        
-        self.identify_streams_button.setEnabled(has_file)
-        self.extract_all_button.setEnabled(has_file)
-        self.extract_stream_button.setEnabled(has_file and has_selected_streams)
-        self.export_selected_table_button.setEnabled(has_file and has_selected_table)
-        self.export_all_tables_button.setEnabled(has_file and has_tables)
+        """Update the enabled state of buttons based on current state"""
+        try:
+            has_file = self.msi_file_path is not None
+            has_selected_streams = len(self.streams_tree.selectedItems()) > 0
+            has_tables = self.tables_data is not None and len(self.tables_data) > 0
+            has_selected_table = self.table_list.currentItem() is not None
+            
+            # Check if any selected stream has a hash
+            has_hash = False
+            for item in self.streams_tree.selectedItems():
+                if item.text(4) and item.text(4) != "Error calculating hash" and item.text(4) != "":
+                    has_hash = True
+                    break
+            
+            # Update button states
+            self.identify_streams_button.setEnabled(has_file)
+            self.extract_all_button.setEnabled(has_file)
+            self.extract_stream_button.setEnabled(has_file and has_selected_streams)
+            self.export_selected_table_button.setEnabled(has_file and has_selected_table)
+            self.export_all_tables_button.setEnabled(has_file and has_tables)
+            
+            # Update reset order button if it exists
+            if hasattr(self, 'reset_order_button'):
+                self.reset_order_button.setEnabled(has_file and not self.original_order)
+                
+        except Exception as e:
+            # Log the error but don't show a dialog to avoid disrupting the UI
+            print(f"Error updating button states: {str(e)}")
+            # Try to enable essential buttons as a fallback
+            try:
+                self.identify_streams_button.setEnabled(True)
+                self.extract_all_button.setEnabled(True)
+                self.extract_stream_button.setEnabled(True)
+            except:
+                pass
         
     def browse_msi_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -417,8 +447,30 @@ class MSIParseGUI(QMainWindow):
         return None
             
     def stream_selected(self, item):
-        # Update button states when selection changes
-        self.update_button_states()
+        """Handle single item click in the streams tree"""
+        try:
+            # Update button states when selection changes
+            self.update_button_states()
+        except Exception as e:
+            self.handle_error("Selection Error", f"Error handling stream selection: {str(e)}", show_dialog=False)
+            
+    def on_stream_selection_changed(self):
+        """Handle selection changes in the streams tree"""
+        try:
+            # Get selected items
+            selected_items = self.streams_tree.selectedItems()
+            
+            # Update status bar with selection info
+            if selected_items:
+                if len(selected_items) == 1:
+                    self.statusBar().showMessage(f"Selected stream: {selected_items[0].text(0)}")
+                else:
+                    self.statusBar().showMessage(f"Selected {len(selected_items)} streams")
+            
+            # Update button states
+            self.update_button_states()
+        except Exception as e:
+            self.handle_error("Selection Error", f"Error handling stream selection change: {str(e)}", show_dialog=False)
         
     def identify_streams(self):
         """Identify the file types of all streams using Magika"""
@@ -438,7 +490,8 @@ class MSIParseGUI(QMainWindow):
         self.identify_thread = IdentifyStreamsThread(
             self.msiparse_path,
             self.msi_file_path,
-            self.streams_data
+            self.streams_data,
+            self
         )
         self.active_threads.append(self.identify_thread)
         
@@ -724,8 +777,40 @@ class MSIParseGUI(QMainWindow):
         if not output_dir:
             return  # User cancelled
             
+        # Show progress
+        self.progress_bar.setVisible(True)
+        self.statusBar().showMessage("Extracting all streams...")
+        
+        # Create and run the command in a thread
         command = [self.msiparse_path, "extract_all", self.msi_file_path, output_dir]
-        self.run_command(command, lambda output: self.handle_extraction_result(output, output_dir))
+        
+        # Create and start the thread
+        self.extract_all_thread = CommandThread(command)
+        self.active_threads.append(self.extract_all_thread)
+        
+        # Connect signals
+        self.extract_all_thread.finished_successfully.connect(
+            lambda: self.handle_extraction_all_complete(output_dir)
+        )
+        self.extract_all_thread.error_occurred.connect(
+            lambda msg: self.handle_error("Extraction Error", msg)
+        )
+        self.extract_all_thread.finished.connect(
+            lambda: self.cleanup_thread(self.extract_all_thread)
+        )
+        
+        # Start the thread
+        self.extract_all_thread.start()
+        
+    def handle_extraction_all_complete(self, output_dir):
+        """Handle completion of extract all operation"""
+        self.progress_bar.setVisible(False)
+        self.show_status(self.STATUS_MESSAGES['extract_complete'])
+        QMessageBox.information(
+            self, 
+            "Extraction Complete", 
+            f"All streams have been extracted to:\n{output_dir}"
+        )
         
     def extract_stream(self):
         """Extract selected streams"""
@@ -742,58 +827,135 @@ class MSIParseGUI(QMainWindow):
         if not output_dir:
             return  # User cancelled
         
-        with self.status_progress(f"Extracting {len(stream_names)} streams...", show_progress=True):
+        try:
+            # Show progress
             self.progress_bar.setRange(0, len(stream_names))
-            self.extract_multiple_streams(stream_names, output_dir)
+            self.progress_bar.setValue(0)
+            self.progress_bar.setVisible(True)
+            self.statusBar().showMessage(f"Extracting {len(stream_names)} streams...")
+            
+            # Setup extraction
+            self.current_extraction_index = 0
+            self.extraction_commands = [
+                [self.msiparse_path, "extract", self.msi_file_path, output_dir, name]
+                for name in stream_names
+            ]
+            self.extraction_output_dir = output_dir
+            self.extraction_errors = []
+            
+            # Start extraction process
+            self.extract_next_stream()
+        except Exception as e:
+            self.progress_bar.setVisible(False)
+            self.handle_error("Extraction Setup Error", f"Failed to setup extraction: {str(e)}", show_dialog=True)
             
     def extract_multiple_streams(self, stream_names, output_dir):
         """Extract multiple streams sequentially"""
-        commands = [
-            [self.msiparse_path, "extract", self.msi_file_path, output_dir, name]
-            for name in stream_names
-        ]
-        
-        self.current_extraction_index = 0
-        self.extraction_commands = commands
-        self.extraction_output_dir = output_dir
-        self.extract_next_stream()
+        try:
+            # Create commands for each stream
+            commands = [
+                [self.msiparse_path, "extract", self.msi_file_path, output_dir, name]
+                for name in stream_names
+            ]
+            
+            self.current_extraction_index = 0
+            self.extraction_commands = commands
+            self.extraction_output_dir = output_dir
+            self.extraction_errors = []
+            
+            # Start extraction process
+            self.extract_next_stream()
+        except Exception as e:
+            self.progress_bar.setVisible(False)
+            self.handle_error("Extraction Setup Error", f"Failed to setup extraction: {str(e)}", show_dialog=True)
         
     def extract_next_stream(self):
         """Extract the next stream in the queue"""
-        if self.current_extraction_index >= len(self.extraction_commands):
-            self.show_status(self.STATUS_MESSAGES['extract_complete'])
-            QMessageBox.information(
-                self, 
-                "Extraction Complete", 
-                f"Files have been extracted to:\n{self.extraction_output_dir}"
-            )
-            return
+        try:
+            # Check if we've processed all streams
+            if self.current_extraction_index >= len(self.extraction_commands):
+                self.progress_bar.setVisible(False)
+                
+                # Show completion message
+                if not self.extraction_errors:
+                    self.show_status(self.STATUS_MESSAGES['extract_complete'])
+                    QMessageBox.information(
+                        self, 
+                        "Extraction Complete", 
+                        f"All files have been extracted to:\n{self.extraction_output_dir}"
+                    )
+                else:
+                    # Show error message if there were any errors
+                    error_msg = f"Completed with {len(self.extraction_errors)} errors:\n\n"
+                    for i, error in enumerate(self.extraction_errors[:5]):  # Show first 5 errors
+                        error_msg += f"{i+1}. {error}\n"
+                    
+                    if len(self.extraction_errors) > 5:
+                        error_msg += f"\n...and {len(self.extraction_errors) - 5} more errors."
+                        
+                    QMessageBox.warning(
+                        self,
+                        "Extraction Completed with Errors",
+                        error_msg
+                    )
+                return
+                
+            # Update progress
+            self.progress_bar.setValue(self.current_extraction_index + 1)
+            command = self.extraction_commands[self.current_extraction_index]
+            stream_name = command[4]  # The stream name is the 5th element in the command
             
-        self.progress_bar.setValue(self.current_extraction_index + 1)
-        command = self.extraction_commands[self.current_extraction_index]
-        
-        # Create and start the thread
-        self.extract_thread = CommandThread(command)
-        self.active_threads.append(self.extract_thread)
-        
-        self.extract_thread.finished_successfully.connect(self.on_stream_extracted)
-        self.extract_thread.error_occurred.connect(lambda msg: self.show_error("Extraction Error", msg))
-        self.extract_thread.finished.connect(lambda: self.cleanup_thread(self.extract_thread))
-        
-        self.extract_thread.start()
+            self.statusBar().showMessage(f"Extracting stream {self.current_extraction_index + 1}/{len(self.extraction_commands)}: {stream_name}")
+            
+            # Extract the stream using the unified method, but don't show individual messages
+            file_path = self.extract_stream_unified(
+                stream_name, 
+                self.extraction_output_dir,
+                show_messages=False
+            )
+            
+            if file_path:
+                # Stream extracted successfully
+                self.current_extraction_index += 1
+                self.extract_next_stream()
+            else:
+                # Record the error
+                self.extraction_errors.append(f"Failed to extract '{stream_name}'")
+                
+                # Continue with next stream
+                self.current_extraction_index += 1
+                self.extract_next_stream()
+                
+        except Exception as e:
+            # Handle any unexpected errors
+            self.extraction_errors.append(f"Unexpected error: {str(e)}")
+            self.current_extraction_index += 1
+            self.extract_next_stream()  # Continue with next stream
         
     def on_stream_extracted(self):
         """Called when a stream has been extracted successfully"""
-        self.current_extraction_index += 1
-        self.extract_next_stream()
-        
-    def handle_extraction_result(self, output, output_dir):
-        self.statusBar().showMessage("Extraction completed")
-        QMessageBox.information(
-            self, 
-            "Extraction Complete", 
-            f"Files have been extracted to:\n{output_dir}"
-        )
+        try:
+            self.current_extraction_index += 1
+            self.extract_next_stream()
+        except Exception as e:
+            self.handle_error("Extraction Error", f"Error during extraction process: {str(e)}", show_dialog=True)
+            self.progress_bar.setVisible(False)
+            
+    def on_stream_extraction_error(self, stream_name, error_msg):
+        """Called when a stream extraction fails"""
+        try:
+            # Record the error
+            self.extraction_errors.append(f"Failed to extract '{stream_name}': {error_msg}")
+            
+            # Log the error to status bar
+            self.statusBar().showMessage(f"Error extracting '{stream_name}': {error_msg[:50]}...")
+            
+            # Continue with next stream
+            self.current_extraction_index += 1
+            self.extract_next_stream()
+        except Exception as e:
+            self.handle_error("Error Handler Failed", f"Error in error handler: {str(e)}", show_dialog=True)
+            self.progress_bar.setVisible(False)
         
     def list_tables(self):
         """List MSI tables"""
@@ -1137,43 +1299,17 @@ class MSIParseGUI(QMainWindow):
         if not output_dir:
             return  # User cancelled
             
-        # Show progress
-        self.progress_bar.setVisible(True)
-        self.statusBar().showMessage(f"Extracting stream: {stream_name}")
+        # Use the unified extraction method
+        file_path = self.extract_stream_unified(stream_name, output_dir)
         
-        # Create and run the command
-        command = [
-            self.msiparse_path,
-            "extract",
-            self.msi_file_path,
-            output_dir,
-            stream_name
-        ]
-        
-        try:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            
-            # Hide progress bar
-            self.progress_bar.setVisible(False)
-            
-            # Show success message
-            self.statusBar().showMessage(f"Stream '{stream_name}' extracted to {output_dir}")
+        # Show success message if extraction succeeded
+        if file_path:
             QMessageBox.information(
                 self,
                 "Extraction Complete",
                 f"Stream '{stream_name}' has been extracted to:\n{output_dir}"
             )
-            
-        except Exception as e:
-            # Hide progress bar
-            self.progress_bar.setVisible(False)
-            self.handle_error("Extraction Error", e)
-        
+
     def copy_to_clipboard(self, text):
         """Copy the given text to the clipboard"""
         clipboard = QApplication.clipboard()
@@ -1182,39 +1318,8 @@ class MSIParseGUI(QMainWindow):
         
     def extract_file_to_temp(self, stream_name, temp_dir):
         """Extract a stream to a temporary directory and return the file path"""
-        try:
-            # Extract the stream to the temp directory
-            command = [
-                self.msiparse_path,
-                "extract",
-                self.msi_file_path,
-                temp_dir,
-                stream_name
-            ]
-            
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            
-            # Path to the extracted file
-            file_path = os.path.join(temp_dir, stream_name)
-            
-            # Check if file exists
-            if os.path.exists(file_path):
-                return file_path
-            else:
-                self.statusBar().showMessage(f"Failed to extract stream: {stream_name}")
-                QMessageBox.warning(self, "Error", f"Failed to extract stream: {stream_name}")
-                return None
-                
-        except Exception as e:
-            self.statusBar().showMessage("Error during extraction")
-            QMessageBox.critical(self, "Error", f"Error extracting file: {str(e)}")
-            return None
-            
+        return self.extract_stream_unified(stream_name, temp_dir, temp=False, show_messages=True)
+
     @contextlib.contextmanager
     def status_progress(self, message, show_progress=True, indeterminate=True):
         """Context manager for showing status message with optional progress bar"""
@@ -1248,34 +1353,78 @@ class MSIParseGUI(QMainWindow):
         if show_dialog and not status_only:
             QMessageBox.warning(self, title, message)
             
-    def extract_file_safe(self, stream_name, output_dir=None, temp=False):
-        """Safe file extraction with proper error handling and progress indication"""
+    def extract_stream_unified(self, stream_name, output_dir=None, temp=False, show_messages=True):
+        """
+        Unified method for extracting streams with consistent error handling.
+        
+        Args:
+            stream_name: Name of the stream to extract
+            output_dir: Directory to extract to (if None and temp=True, creates temp dir)
+            temp: Whether to create a temporary directory if output_dir is None
+            show_messages: Whether to show status messages and dialogs
+            
+        Returns:
+            Path to the extracted file or None if extraction failed
+        """
+        if not self.msi_file_path:
+            return None
+            
+        # Create temp directory if needed
+        created_temp_dir = False
         if temp and not output_dir:
             output_dir = tempfile.mkdtemp()
+            created_temp_dir = True
             
         try:
-            with self.status_progress(f"Extracting stream: {stream_name}"):
-                command = [
-                    self.msiparse_path,
-                    "extract",
-                    self.msi_file_path,
-                    output_dir,
-                    stream_name
-                ]
-                
-                result = subprocess.run(command, capture_output=True, text=True, check=True)
-                file_path = os.path.join(output_dir, stream_name)
-                
-                if os.path.exists(file_path):
-                    self.show_status(f"Stream '{stream_name}' extracted successfully")
-                    return file_path
-                    
-                raise FileNotFoundError(f"Failed to extract stream: {stream_name}")
+            # Show progress if requested
+            if show_messages:
+                self.progress_bar.setVisible(True)
+                self.statusBar().showMessage(f"Extracting stream: {stream_name}")
+            
+            # Create and run the command
+            command = [
+                self.msiparse_path,
+                "extract",
+                self.msi_file_path,
+                output_dir,
+                stream_name
+            ]
+            
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            
+            # Path to the extracted file
+            file_path = os.path.join(output_dir, stream_name)
+            
+            # Check if file exists
+            if os.path.exists(file_path):
+                if show_messages:
+                    self.statusBar().showMessage(f"Stream '{stream_name}' extracted successfully")
+                return file_path
+            else:
+                if show_messages:
+                    self.statusBar().showMessage(f"Failed to extract stream: {stream_name}")
+                    QMessageBox.warning(self, "Error", f"Failed to extract stream: {stream_name}")
+                return None
                 
         except Exception as e:
-            self.show_error("Extraction Error", e)
+            if show_messages:
+                self.statusBar().showMessage("Error during extraction")
+                QMessageBox.critical(self, "Error", f"Error extracting file: {str(e)}")
             return None
-
+        finally:
+            # Hide progress bar if shown
+            if show_messages:
+                self.progress_bar.setVisible(False)
+                
+    def extract_file_safe(self, stream_name, output_dir=None, temp=False):
+        """Safe file extraction with proper error handling and progress indication"""
+        return self.extract_stream_unified(stream_name, output_dir, temp)
+        
     def run_command_safe(self, command, success_message=None):
         """Run a command with proper error handling and progress indication"""
         try:

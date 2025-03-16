@@ -13,12 +13,13 @@ class IdentifyStreamsThread(QThread):
     finished_successfully = pyqtSignal()
     error_occurred = pyqtSignal(str)
     
-    def __init__(self, msiparse_path, msi_file_path, streams):
+    def __init__(self, msiparse_path, msi_file_path, streams, parent=None):
         super().__init__()
         self.msiparse_path = msiparse_path
         self.msi_file_path = msi_file_path
         self.streams = streams
         self.running = True
+        self.parent = parent  # Store parent for accessing extract_stream_unified
         
         # Initialize magika
         self.magika_client = magika.Magika()
@@ -42,36 +43,47 @@ class IdentifyStreamsThread(QThread):
                 
                 # Extract the stream to the temp directory
                 try:
-                    command = [
-                        self.msiparse_path,
-                        "extract",
-                        self.msi_file_path,
-                        temp_dir,
-                        stream_name
-                    ]
-                    
-                    subprocess.run(
-                        command,
-                        capture_output=True,
-                        text=True,
-                        check=True
-                    )
-                    
-                    # Path to the extracted file
-                    file_path = Path(temp_dir) / stream_name
+                    # If parent is available and has extract_stream_unified method, use it
+                    file_path = None
+                    if self.parent and hasattr(self.parent, 'extract_stream_unified'):
+                        file_path = self.parent.extract_stream_unified(
+                            stream_name, 
+                            temp_dir, 
+                            temp=False, 
+                            show_messages=False
+                        )
+                    else:
+                        # Fallback to direct extraction
+                        command = [
+                            self.msiparse_path,
+                            "extract",
+                            self.msi_file_path,
+                            temp_dir,
+                            stream_name
+                        ]
+                        
+                        subprocess.run(
+                            command,
+                            capture_output=True,
+                            text=True,
+                            check=True
+                        )
+                        
+                        # Path to the extracted file
+                        file_path = Path(temp_dir) / stream_name
                     
                     # Check if file exists
-                    if file_path.exists():
+                    if file_path and Path(file_path).exists():
                         try:
                             # Get file size
-                            file_size = file_path.stat().st_size
+                            file_size = Path(file_path).stat().st_size
                             file_size_str = format_file_size(file_size)
                             
                             # Calculate SHA1 hash
                             sha1_hash = calculate_sha1(file_path)
                             
                             # Identify file type using magika with Path object
-                            result = self.magika_client.identify_path(file_path)
+                            result = self.magika_client.identify_path(Path(file_path))
                             mime_type = result.output.mime_type
                             group = result.output.group
                             
@@ -82,7 +94,7 @@ class IdentifyStreamsThread(QThread):
                         
                         # Delete the temporary file
                         try:
-                            file_path.unlink()
+                            Path(file_path).unlink()
                         except:
                             pass
                     else:
