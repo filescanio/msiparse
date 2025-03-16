@@ -6,7 +6,8 @@ from pathlib import Path
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
                            QTreeWidget, QTreeWidgetItem, QMessageBox, QProgressBar,
                            QMenu, QAction, QFileDialog, QApplication)
-from PyQt5.QtCore import Qt, QPoint
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont
 import magika
 
 # Import common utilities
@@ -73,6 +74,11 @@ class ArchivePreviewDialog(QDialog):
         self.contents_tree = QTreeWidget()
         self.contents_tree.setHeaderLabels(["Name", "Group", "MIME Type", "Size", "SHA1 Hash"])
         self.contents_tree.setSelectionMode(QTreeWidget.SingleSelection)
+        
+        # Remove monospaced font for the entire tree
+        # mono_font = QFont("Courier New", 10)
+        # mono_font.setFixedPitch(True)
+        # self.contents_tree.setFont(mono_font)
         
         # Enable context menu for contents tree
         self.contents_tree.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -507,6 +513,12 @@ class ArchivePreviewDialog(QDialog):
             item.setText(1, group)
             item.setText(2, mime_type)
             item.setText(4, sha1_hash)
+            
+            # Set monospaced font for the hash column only
+            if sha1_hash and sha1_hash != "Error calculating hash":
+                mono_font = QFont("Courier New", 10)
+                mono_font.setFixedPitch(True)
+                item.setFont(4, mono_font)
             
             # Set icon based on group
             if group in self.group_icons:

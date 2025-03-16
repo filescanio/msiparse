@@ -11,8 +11,8 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QTreeWidget, QTreeWidgetItem, QMessageBox, QProgressBar,
                             QSplitter, QTableWidget, QTableWidgetItem, QHeaderView, QListWidget,
                             QToolButton, QListWidgetItem, QMenu, QAction, QApplication)
-from PyQt5.QtCore import Qt, QPoint
-from PyQt5.QtGui import QIcon
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon, QFont
 
 # Import custom modules
 from threads.command import CommandThread
@@ -349,6 +349,7 @@ class MSIParseGUI(QMainWindow):
         
         self.table_list = QListWidget()
         self.table_list.setMaximumWidth(200)  # Limit width of the table list
+        
         self.table_list.currentItemChanged.connect(self.table_selected)
         table_list_layout.addWidget(self.table_list)
         
@@ -471,6 +472,12 @@ class MSIParseGUI(QMainWindow):
                 item.setText(3, file_size)
                 item.setText(4, sha1_hash)
                 
+                # Set monospaced font for the hash column only
+                if sha1_hash and sha1_hash != "Error calculating hash" and sha1_hash != "":
+                    mono_font = QFont("Courier New", 10)
+                    mono_font.setFixedPitch(True)
+                    item.setFont(4, mono_font)
+                
                 # Set icon based on group
                 self.set_icon_for_group(item, group)
                 
@@ -584,11 +591,28 @@ class MSIParseGUI(QMainWindow):
         self.table_content.setColumnCount(len(columns))
         self.table_content.setHorizontalHeaderLabels(columns)
         
+        # Remove monospaced font for the entire table
+        # mono_font = QFont("Courier New", 10)
+        # mono_font.setFixedPitch(True)
+        # self.table_content.setFont(mono_font)
+        
+        # Create monospaced font for hash columns
+        mono_font = QFont("Courier New", 10)
+        mono_font.setFixedPitch(True)
+        
         # Fill the table with data
         for row_idx, row_data in enumerate(rows):
             for col_idx, cell_data in enumerate(row_data):
                 if col_idx < len(columns):  # Safety check
                     item = QTableWidgetItem(cell_data)
+                    
+                    # Apply monospaced font only to hash columns
+                    # Check if column name contains "hash" or if the data looks like a hash
+                    column_name = columns[col_idx].lower()
+                    if ("hash" in column_name or 
+                        (len(cell_data) >= 32 and all(c in "0123456789abcdefABCDEF" for c in cell_data))):
+                        item.setFont(mono_font)
+                        
                     self.table_content.setItem(row_idx, col_idx, item)
         
         self.statusBar().showMessage(f"Showing table: {table_name} ({len(rows)} rows)")
@@ -808,6 +832,12 @@ class MSIParseGUI(QMainWindow):
                     
                     # Add table name label
                     label = QLabel(table_name)
+                    
+                    # Remove monospaced font for the label
+                    # mono_font = QFont("Courier New", 10)
+                    # mono_font.setFixedPitch(True)
+                    # label.setFont(mono_font)
+                    
                     layout.addWidget(label)
                     
                     # Add spacer to push the info button to the right
@@ -944,24 +974,34 @@ class MSIParseGUI(QMainWindow):
             group = item.text(1)
             mime_type = item.text(2)
             file_size = item.text(3)
+            sha1_hash = item.text(4)
             size_value = item.data(3, Qt.UserRole)
-            stream_data[stream_name] = (group, mime_type, file_size, size_value)
+            stream_data[stream_name] = (group, mime_type, file_size, sha1_hash, size_value)
         
         # Clear and repopulate the tree
         self.streams_tree.clear()
+        
+        # Create monospaced font for hash columns
+        mono_font = QFont("Courier New", 10)
+        mono_font.setFixedPitch(True)
         
         for stream in self.streams_data:
             # Get stored data if available
             group = ""
             mime_type = ""
             file_size = ""
+            sha1_hash = ""
             size_value = None
             
             if stream in stream_data:
-                group, mime_type, file_size, size_value = stream_data[stream]
+                group, mime_type, file_size, sha1_hash, size_value = stream_data[stream]
             
-            # Create item with four columns
-            item = QTreeWidgetItem([stream, group, mime_type, file_size])
+            # Create item with five columns
+            item = QTreeWidgetItem([stream, group, mime_type, file_size, sha1_hash])
+            
+            # Set monospaced font for the hash column only
+            if sha1_hash and sha1_hash != "Error calculating hash" and sha1_hash != "":
+                item.setFont(4, mono_font)
             
             # Set the size value for proper sorting if available
             if size_value is not None:
