@@ -1,0 +1,7 @@
+PyQt5>=5.15.11
+magika>=0.5.1
+# Note: libarchive-c requires the libarchive system library to be installed
+# On Windows: Download from https://github.com/libarchive/libarchive/wiki/Downloads or use Chocolatey
+# On macOS: brew install libarchive
+# On Linux: sudo apt install libarchive-dev (or equivalent for your distribution)
+libarchive-c>=5.2.0 
