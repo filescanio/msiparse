@@ -380,6 +380,32 @@ class MSIParseGUI(QMainWindow):
         
         self.tabs.addTab(self.tables_tab, "Tables")
         
+        # Certificate tab
+        self.certificate_tab = QWidget()
+        certificate_layout = QVBoxLayout()
+        self.certificate_tab.setLayout(certificate_layout)
+        
+        # Add description label
+        cert_description = QLabel("Extract digital signatures from the MSI file. Digital signatures are used to verify the authenticity and integrity of the MSI package.")
+        cert_description.setWordWrap(True)
+        certificate_layout.addWidget(cert_description)
+        
+        # Add button to extract certificates
+        cert_button_layout = QHBoxLayout()
+        self.extract_cert_button = QPushButton("Extract Digital Signatures")
+        self.extract_cert_button.clicked.connect(self.extract_certificates)
+        cert_button_layout.addWidget(self.extract_cert_button)
+        cert_button_layout.addStretch()
+        certificate_layout.addLayout(cert_button_layout)
+        
+        # Add status area
+        self.cert_status = QTextEdit()
+        self.cert_status.setReadOnly(True)
+        certificate_layout.addWidget(self.cert_status)
+        
+        # Add the certificate tab to the tab widget
+        self.tabs.addTab(self.certificate_tab, "Certificates")
+        
         # Status bar
         self.statusBar().showMessage("Ready")
         
@@ -439,6 +465,7 @@ class MSIParseGUI(QMainWindow):
             self.extract_stream_button.setEnabled(has_file and has_selected_streams)
             self.export_selected_table_button.setEnabled(has_file and has_selected_table)
             self.export_all_tables_button.setEnabled(has_file and has_tables)
+            self.extract_cert_button.setEnabled(has_file)
             
             # Update reset order button if it exists
             if hasattr(self, 'reset_order_button'):
@@ -464,6 +491,9 @@ class MSIParseGUI(QMainWindow):
             self.file_label.setText(os.path.basename(file_path))
             self.update_button_states()
             self.statusBar().showMessage(f"Selected MSI file: {file_path}")
+            
+            # Clear certificate status
+            self.cert_status.clear()
             
             # Auto-run metadata, streams, and tables when file is selected
             self.get_metadata()
@@ -834,49 +864,121 @@ class MSIParseGUI(QMainWindow):
             self.handle_error("Parse Error", "Error parsing streams output", show_dialog=True)
             
     def extract_all_streams(self):
+        """Extract all streams from the MSI file"""
         if not self.msi_file_path:
+            self.show_error("Error", "No MSI file selected")
             return
             
-        # Prompt for output directory
+        # Get output directory
         output_dir = self.get_output_directory()
         if not output_dir:
-            return  # User cancelled
+            return
             
         # Show progress
         self.progress_bar.setVisible(True)
-        self.statusBar().showMessage("Extracting all streams...")
         
-        # Create and run the command in a thread
-        command = [self.msiparse_path, "extract_all", self.msi_file_path, output_dir]
+        # Build command
+        command = [
+            self.msiparse_path,
+            "extract_all",
+            self.msi_file_path,
+            output_dir
+        ]
         
-        # Create and start the thread
-        self.extract_all_thread = CommandThread(command)
-        self.active_threads.append(self.extract_all_thread)
-        
-        # Connect signals
-        self.extract_all_thread.finished_successfully.connect(
-            lambda: self.handle_extraction_all_complete(output_dir)
-        )
-        self.extract_all_thread.error_occurred.connect(
-            lambda msg: self.handle_error("Extraction Error", msg)
-        )
-        self.extract_all_thread.finished.connect(
-            lambda: self.cleanup_thread(self.extract_all_thread)
-        )
-        
-        # Start the thread
-        self.extract_all_thread.start()
+        # Run command
+        self.run_command(command, lambda output: self.handle_extraction_all_complete(output_dir))
         
     def handle_extraction_all_complete(self, output_dir):
-        """Handle completion of extract all operation"""
+        """Handle completion of extract all command"""
         self.progress_bar.setVisible(False)
-        self.show_status(self.STATUS_MESSAGES['extract_complete'])
+        
+        # Show success message
         QMessageBox.information(
-            self, 
-            "Extraction Complete", 
+            self,
+            "Extraction Complete",
             f"All streams have been extracted to:\n{output_dir}"
         )
         
+    def extract_certificates(self):
+        """Extract digital signatures from the MSI file"""
+        if not self.msi_file_path:
+            self.show_error("Error", "No MSI file selected")
+            return
+            
+        # Get output directory
+        output_dir = self.get_output_directory()
+        if not output_dir:
+            return
+            
+        # Clear previous status
+        self.cert_status.clear()
+        self.cert_status.append("Extracting digital signatures...")
+        
+        # Show progress
+        self.progress_bar.setVisible(True)
+        
+        # Build command
+        command = [
+            self.msiparse_path,
+            "extract_certificate",
+            self.msi_file_path,
+            output_dir
+        ]
+        
+        # Run command
+        self.run_command(command, self.handle_certificate_extraction_complete)
+        
+    def handle_certificate_extraction_complete(self, output):
+        """Handle completion of certificate extraction command"""
+        self.progress_bar.setVisible(False)
+        
+        # Process the output
+        if "MSI file has a digital signature" in output:
+            self.cert_status.append("✅ Digital signature found in the MSI file")
+            
+            # Check for successful extraction messages
+            if "Successfully extracted" in output:
+                self.cert_status.append("\nExtracted signature files:")
+                
+                # Parse the output to find extracted files
+                for line in output.split('\n'):
+                    if "Successfully extracted" in line:
+                        # Extract the file path from the output
+                        parts = line.split(" to ")
+                        if len(parts) == 2:
+                            file_path = parts[1].strip()
+                            file_name = os.path.basename(file_path)
+                            self.cert_status.append(f"- {file_name}")
+                
+                # Add a note about what to do with the certificates
+                self.cert_status.append("\nThese files contain the digital signature data. You can:")
+                self.cert_status.append("1. Use tools like 'signtool verify' to validate the signature")
+                self.cert_status.append("2. Extract certificate information with OpenSSL or similar tools")
+                
+                # Show success message
+                QMessageBox.information(
+                    self,
+                    "Extraction Complete",
+                    f"Digital signatures have been extracted successfully."
+                )
+            else:
+                self.cert_status.append("⚠️ Signature found but extraction may have failed. Check the output directory.")
+        elif "MSI file does not have a digital signature" in output:
+            self.cert_status.append("❌ No digital signature found in the MSI file")
+            
+            # Show info message
+            QMessageBox.information(
+                self,
+                "No Signature",
+                "This MSI file does not contain a digital signature."
+            )
+        else:
+            self.cert_status.append("⚠️ Unexpected output from certificate extraction:")
+            self.cert_status.append(output)
+            
+            # Show warning
+            self.show_warning("Extraction Issue", "Unexpected output from certificate extraction. Check the log for details.")
+
     def extract_stream(self):
         """Extract selected streams"""
         if not self.msi_file_path:
