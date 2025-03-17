@@ -5,6 +5,9 @@ import tempfile
 import shutil
 import contextlib
 import webbrowser
+import datetime
+import base64
+from io import BytesIO
 
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QPushButton, QLabel, QFileDialog, QTabWidget, QTextEdit, 
@@ -13,6 +16,17 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QToolButton, QListWidgetItem, QMenu, QAction, QApplication, QLineEdit, QShortcut)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon, QFont, QKeySequence
+
+# Import for certificate analysis
+try:
+    from cryptography import x509
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives.serialization import pkcs7
+    from cryptography.x509.oid import NameOID, ExtensionOID
+    from asn1crypto import cms, pem
+    CERT_ANALYSIS_AVAILABLE = True
+except ImportError:
+    CERT_ANALYSIS_AVAILABLE = False
 
 # Import custom modules
 from threads.command import CommandThread
@@ -395,13 +409,32 @@ class MSIParseGUI(QMainWindow):
         self.extract_cert_button = QPushButton("Extract Digital Signatures")
         self.extract_cert_button.clicked.connect(self.extract_certificates)
         cert_button_layout.addWidget(self.extract_cert_button)
+        
+        # Add analyze button
+        self.analyze_cert_button = QPushButton("Analyze Signature")
+        self.analyze_cert_button.clicked.connect(self.analyze_certificate)
+        self.analyze_cert_button.setEnabled(False)  # Disabled until certificate is extracted
+        cert_button_layout.addWidget(self.analyze_cert_button)
+        
         cert_button_layout.addStretch()
         certificate_layout.addLayout(cert_button_layout)
         
-        # Add status area
+        # Create a splitter for certificate information
+        cert_splitter = QSplitter(Qt.Vertical)
+        certificate_layout.addWidget(cert_splitter, 1)
+        
+        # Top part - Status and basic info
         self.cert_status = QTextEdit()
         self.cert_status.setReadOnly(True)
-        certificate_layout.addWidget(self.cert_status)
+        cert_splitter.addWidget(self.cert_status)
+        
+        # Bottom part - Detailed certificate information
+        self.cert_details = QTextEdit()
+        self.cert_details.setReadOnly(True)
+        cert_splitter.addWidget(self.cert_details)
+        
+        # Set initial splitter sizes
+        cert_splitter.setSizes([200, 400])
         
         # Add the certificate tab to the tab widget
         self.tabs.addTab(self.certificate_tab, "Certificates")
@@ -466,6 +499,7 @@ class MSIParseGUI(QMainWindow):
             self.export_selected_table_button.setEnabled(has_file and has_selected_table)
             self.export_all_tables_button.setEnabled(has_file and has_tables)
             self.extract_cert_button.setEnabled(has_file)
+            self.analyze_cert_button.setEnabled(has_file)
             
             # Update reset order button if it exists
             if hasattr(self, 'reset_order_button'):
@@ -492,8 +526,13 @@ class MSIParseGUI(QMainWindow):
             self.update_button_states()
             self.statusBar().showMessage(f"Selected MSI file: {file_path}")
             
-            # Clear certificate status
+            # Clear certificate status and details
             self.cert_status.clear()
+            self.cert_details.clear()
+            
+            # Reset extracted certificate files
+            if hasattr(self, 'extracted_cert_files'):
+                delattr(self, 'extracted_cert_files')
             
             # Auto-run metadata, streams, and tables when file is selected
             self.get_metadata()
@@ -941,6 +980,7 @@ class MSIParseGUI(QMainWindow):
                 self.cert_status.append("\nExtracted signature files:")
                 
                 # Parse the output to find extracted files
+                extracted_files = []
                 for line in output.split('\n'):
                     if "Successfully extracted" in line:
                         # Extract the file path from the output
@@ -949,11 +989,19 @@ class MSIParseGUI(QMainWindow):
                             file_path = parts[1].strip()
                             file_name = os.path.basename(file_path)
                             self.cert_status.append(f"- {file_name}")
+                            extracted_files.append(file_path)
+                
+                # Store the extracted files for later analysis
+                self.extracted_cert_files = extracted_files
+                
+                # Enable the analyze button
+                self.analyze_cert_button.setEnabled(True)
                 
                 # Add a note about what to do with the certificates
                 self.cert_status.append("\nThese files contain the digital signature data. You can:")
                 self.cert_status.append("1. Use tools like 'signtool verify' to validate the signature")
                 self.cert_status.append("2. Extract certificate information with OpenSSL or similar tools")
+                self.cert_status.append("3. Click 'Analyze Signature' to view detailed certificate information")
                 
                 # Show success message
                 QMessageBox.information(
@@ -963,8 +1011,10 @@ class MSIParseGUI(QMainWindow):
                 )
             else:
                 self.cert_status.append("⚠️ Signature found but extraction may have failed. Check the output directory.")
+                self.analyze_cert_button.setEnabled(False)
         elif "MSI file does not have a digital signature" in output:
             self.cert_status.append("❌ No digital signature found in the MSI file")
+            self.analyze_cert_button.setEnabled(False)
             
             # Show info message
             QMessageBox.information(
@@ -975,9 +1025,190 @@ class MSIParseGUI(QMainWindow):
         else:
             self.cert_status.append("⚠️ Unexpected output from certificate extraction:")
             self.cert_status.append(output)
+            self.analyze_cert_button.setEnabled(False)
             
             # Show warning
             self.show_warning("Extraction Issue", "Unexpected output from certificate extraction. Check the log for details.")
+            
+    def analyze_certificate(self):
+        """Analyze the extracted certificate"""
+        if not hasattr(self, 'extracted_cert_files') or not self.extracted_cert_files:
+            self.show_warning("No Certificate Extracted", "No certificate has been extracted yet.")
+            return
+            
+        # Check if certificate analysis libraries are available
+        if not CERT_ANALYSIS_AVAILABLE:
+            self.show_warning(
+                "Missing Dependencies", 
+                "Certificate analysis requires the 'cryptography' and 'asn1crypto' libraries.\n\n"
+                "Please install them with:\npip install cryptography asn1crypto"
+            )
+            return
+            
+        # Clear previous details
+        self.cert_details.clear()
+        
+        # Find the DigitalSignature file (main signature)
+        signature_file = None
+        for file_path in self.extracted_cert_files:
+            if os.path.basename(file_path) == "DigitalSignature":
+                signature_file = file_path
+                break
+                
+        if not signature_file:
+            self.show_warning("Missing Signature File", "The DigitalSignature file was not found among the extracted files.")
+            return
+            
+        try:
+            # Read the signature file
+            with open(signature_file, 'rb') as f:
+                signature_data = f.read()
+                
+            # Parse the PKCS#7 signature
+            content_info = cms.ContentInfo.load(signature_data)
+            signed_data = content_info['content']
+            
+            # Add simple header
+            self.cert_details.append("<h2>Digital Signature Summary</h2>")
+            
+            # Basic signature information
+            self.cert_details.append("<h3>Signature Information</h3>")
+            self.cert_details.append(f"<b>Format:</b> DER Encoded PKCS#7 Signed Data")
+            
+            # Get digest algorithms
+            digest_algorithms = []
+            for digest_algo in signed_data['digest_algorithms']:
+                algo_name = digest_algo['algorithm'].native
+                digest_algorithms.append(algo_name)
+            self.cert_details.append(f"<b>Digest Algorithm:</b> {', '.join(digest_algorithms)}")
+            
+            # Use cryptography library for certificate analysis
+            try:
+                pkcs7_obj = pkcs7.load_der_pkcs7_certificates(signature_data)
+                if pkcs7_obj:
+                    self.cert_details.append("<h3>Certificate Chain</h3>")
+                    self.analyze_certificate_chain_simple(pkcs7_obj)
+            except Exception as e:
+                self.cert_details.append(f"<p style='color:red'>Error parsing certificates: {str(e)}</p>")
+                
+            # Try to extract signer information
+            try:
+                self.cert_details.append("<h3>Signer Information</h3>")
+                self.analyze_signer_info_simple(signed_data)
+            except Exception as e:
+                self.cert_details.append(f"<p style='color:red'>Error parsing signer info: {str(e)}</p>")
+                
+        except Exception as e:
+            self.cert_details.append(f"<p style='color:red'>Error analyzing certificate: {str(e)}</p>")
+            
+    def analyze_certificate_chain_simple(self, certificates):
+        """Analyze the certificate chain from a PKCS#7 signature - simplified version"""
+        for i, cert in enumerate(certificates):
+            # Determine certificate type
+            is_ca = False
+            is_self_signed = False
+            
+            # Check if it's a CA certificate
+            try:
+                basic_constraints = cert.extensions.get_extension_for_oid(ExtensionOID.BASIC_CONSTRAINTS)
+                is_ca = basic_constraints.value.ca
+            except x509.ExtensionNotFound:
+                pass
+                
+            # Check if it's self-signed
+            try:
+                is_self_signed = (cert.subject == cert.issuer)
+            except:
+                pass
+                
+            # Determine certificate role
+            cert_role = "Unknown"
+            if is_self_signed and is_ca:
+                cert_role = "Root CA"
+            elif is_ca:
+                cert_role = "Intermediate CA"
+            elif i == 0:
+                cert_role = "End Entity (Signer)"
+                
+            # Get subject and issuer
+            subject = self.get_name_as_text(cert.subject)
+            issuer = self.get_name_as_text(cert.issuer)
+            
+            # Get validity period
+            not_before = cert.not_valid_before
+            not_after = cert.not_valid_after
+            now = datetime.datetime.now()
+            is_valid = not_before <= now <= not_after
+            
+            # Format validity status
+            validity_status = "✅ Valid" if is_valid else "❌ Invalid"
+            
+            # Display certificate information
+            self.cert_details.append(f"<b>Certificate {i+1} ({cert_role}):</b>")
+            self.cert_details.append(f"Subject: {subject}")
+            self.cert_details.append(f"Issuer: {issuer}")
+            self.cert_details.append(f"Validity: {validity_status}")
+            self.cert_details.append(f"Valid from {not_before.strftime('%Y-%m-%d')} to {not_after.strftime('%Y-%m-%d')}")
+            
+            # Add a separator between certificates
+            if i < len(certificates) - 1:
+                self.cert_details.append("<br>")
+            
+    def analyze_signer_info_simple(self, signed_data):
+        """Analyze the signer information from a CMS SignedData object - simplified version"""
+        if 'signer_infos' not in signed_data or not signed_data['signer_infos']:
+            self.cert_details.append("<p>No signer information found.</p>")
+            return
+            
+        for i, signer_info in enumerate(signed_data['signer_infos']):
+            self.cert_details.append(f"<b>Signer {i+1}:</b>")
+            
+            # Get signer identifier
+            sid = signer_info['sid']
+            if sid.name == 'issuer_and_serial_number':
+                issuer = sid.chosen['issuer'].human_friendly
+                serial = sid.chosen['serial_number'].native
+                self.cert_details.append(f"Issuer: {issuer}")
+            else:
+                self.cert_details.append(f"Subject Key Identifier: {sid.chosen.native.hex()[:16]}...")
+                
+            # Get digest algorithm
+            digest_algorithm = signer_info['digest_algorithm']['algorithm'].native
+            self.cert_details.append(f"Digest Algorithm: {digest_algorithm}")
+            
+            # Check for signing time
+            if 'signed_attrs' in signer_info and signer_info['signed_attrs']:
+                for attr in signer_info['signed_attrs']:
+                    attr_type = attr['type'].native
+                    if attr_type == 'signing_time':
+                        signing_time = attr['values'][0].native
+                        self.cert_details.append(f"Signing Time: {signing_time}")
+                        break
+            
+            # Add a separator between signers
+            if i < len(signed_data['signer_infos']) - 1:
+                self.cert_details.append("<br>")
+                
+    def get_name_as_text(self, name):
+        """Convert an X.509 name to a readable string"""
+        result = []
+        for attr in name:
+            oid = attr.oid
+            if oid == NameOID.COMMON_NAME:
+                result.append(f"CN={attr.value}")
+            elif oid == NameOID.ORGANIZATION_NAME:
+                result.append(f"O={attr.value}")
+            elif oid == NameOID.ORGANIZATIONAL_UNIT_NAME:
+                result.append(f"OU={attr.value}")
+            elif oid == NameOID.COUNTRY_NAME:
+                result.append(f"C={attr.value}")
+            elif oid == NameOID.STATE_OR_PROVINCE_NAME:
+                result.append(f"ST={attr.value}")
+            elif oid == NameOID.LOCALITY_NAME:
+                result.append(f"L={attr.value}")
+            else:
+                result.append(f"{oid._name}={attr.value}")
+        return ", ".join(result)
 
     def extract_stream(self):
         """Extract selected streams"""

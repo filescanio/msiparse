@@ -4,4 +4,7 @@ magika>=0.5.1
 # On Windows: Download from https://github.com/libarchive/libarchive/wiki/Downloads or use Chocolatey
 # On macOS: brew install libarchive
 # On Linux: sudo apt install libarchive-dev (or equivalent for your distribution)
-libarchive-c>=5.2.0 
+libarchive-c>=5.2.0
+# For certificate analysis
+cryptography>=42.0.0
+asn1crypto>=1.5.1 
