@@ -1032,8 +1032,8 @@ class MSIParseGUI(QMainWindow):
             
     def analyze_certificate(self):
         """Analyze the extracted certificate"""
-        if not hasattr(self, 'extracted_cert_files') or not self.extracted_cert_files:
-            self.show_warning("No Certificate Extracted", "No certificate has been extracted yet.")
+        if not self.msi_file_path:
+            self.show_warning("No MSI File", "Please select an MSI file first.")
             return
             
         # Check if certificate analysis libraries are available
@@ -1048,9 +1048,94 @@ class MSIParseGUI(QMainWindow):
         # Clear previous details
         self.cert_details.clear()
         
+        # If certificates haven't been extracted yet, extract them to a temporary directory
+        if not hasattr(self, 'extracted_cert_files') or not self.extracted_cert_files:
+            self.cert_status.clear()
+            self.cert_status.append("Extracting digital signatures to temporary location...")
+            
+            # Create a temporary directory for extraction
+            with temp_directory() as temp_dir:
+                # Show progress
+                self.progress_bar.setVisible(True)
+                
+                try:
+                    # Build and run command
+                    command = [
+                        self.msiparse_path,
+                        "extract_certificate",
+                        self.msi_file_path,
+                        temp_dir
+                    ]
+                    
+                    result = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    
+                    output = result.stdout
+                    
+                    # Process the output
+                    if "MSI file has a digital signature" in output:
+                        self.cert_status.append("✅ Digital signature found in the MSI file")
+                        
+                        # Find extracted files
+                        extracted_files = []
+                        for line in output.split('\n'):
+                            if "Successfully extracted" in line:
+                                # Extract the file path from the output
+                                parts = line.split(" to ")
+                                if len(parts) == 2:
+                                    file_path = parts[1].strip()
+                                    file_name = os.path.basename(file_path)
+                                    self.cert_status.append(f"- {file_name}")
+                                    extracted_files.append(file_path)
+                        
+                        # If no files were extracted, show warning and return
+                        if not extracted_files:
+                            self.cert_status.append("⚠️ No signature files were extracted.")
+                            self.progress_bar.setVisible(False)
+                            return
+                            
+                        # Analyze the extracted certificates
+                        self._analyze_certificate_files(extracted_files)
+                        
+                    elif "MSI file does not have a digital signature" in output:
+                        self.cert_status.append("❌ No digital signature found in the MSI file")
+                        self.progress_bar.setVisible(False)
+                        
+                        # Show info message
+                        QMessageBox.information(
+                            self,
+                            "No Signature",
+                            "This MSI file does not contain a digital signature."
+                        )
+                    else:
+                        self.cert_status.append("⚠️ Unexpected output from certificate extraction:")
+                        self.cert_status.append(output)
+                        self.progress_bar.setVisible(False)
+                        
+                        # Show warning
+                        self.show_warning("Extraction Issue", "Unexpected output from certificate extraction. Check the log for details.")
+                        
+                except Exception as e:
+                    self.cert_status.append(f"❌ Error extracting certificates: {str(e)}")
+                    self.progress_bar.setVisible(False)
+                    self.show_error("Extraction Error", f"Failed to extract certificates: {str(e)}")
+                    
+                finally:
+                    # Hide progress bar
+                    self.progress_bar.setVisible(False)
+        else:
+            # Use previously extracted certificate files
+            self._analyze_certificate_files(self.extracted_cert_files)
+            
+    def _analyze_certificate_files(self, certificate_files):
+        """Internal method to analyze certificate files"""
         # Find the DigitalSignature file (main signature)
         signature_file = None
-        for file_path in self.extracted_cert_files:
+        for file_path in certificate_files:
             if os.path.basename(file_path) == "DigitalSignature":
                 signature_file = file_path
                 break
@@ -1134,10 +1219,19 @@ class MSIParseGUI(QMainWindow):
             subject = self.get_name_as_text(cert.subject)
             issuer = self.get_name_as_text(cert.issuer)
             
-            # Get validity period
-            not_before = cert.not_valid_before
-            not_after = cert.not_valid_after
-            now = datetime.datetime.now()
+            # Get validity period using UTC-aware methods to avoid deprecation warnings
+            try:
+                # Use the new UTC-aware methods if available
+                not_before = cert.not_valid_before_utc
+                not_after = cert.not_valid_after_utc
+            except AttributeError:
+                # Fall back to the deprecated methods if the newer ones aren't available
+                # (for compatibility with older versions of cryptography)
+                not_before = cert.not_valid_before
+                not_after = cert.not_valid_after
+                
+            # Get current time in UTC for comparison
+            now = datetime.datetime.now(datetime.timezone.utc)
             is_valid = not_before <= now <= not_after
             
             # Format validity status
