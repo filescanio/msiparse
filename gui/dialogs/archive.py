@@ -347,6 +347,7 @@ class ArchivePreviewDialog(QDialog):
         # Get file name and group/mime type if available
         file_name = item.text(0)
         group = item.text(1)
+        mime_type = item.text(2)
         sha1_hash = item.text(4)
         
         # Create context menu
@@ -384,16 +385,12 @@ class ArchivePreviewDialog(QDialog):
         extract_action.triggered.connect(lambda: self.extract_file_to_user_location(item))
         context_menu.addAction(extract_action)
         
-        # Add Copy Hash action if hash is available
+        # Add Hash Lookup option if hash is available
         if sha1_hash and sha1_hash != "Error calculating hash":
             context_menu.addSeparator()
             
-            copy_hash_action = QAction("Copy SHA1 Hash", self)
-            copy_hash_action.triggered.connect(lambda: self.copy_to_clipboard(sha1_hash))
-            context_menu.addAction(copy_hash_action)
-            
             # Add online hash lookup submenu
-            hash_lookup_menu = QMenu("Lookup Hash Online", self)
+            hash_lookup_menu = QMenu("Lookup Hash", self)
             
             virustotal_action = QAction("VirusTotal", self)
             virustotal_action.triggered.connect(lambda: self.open_hash_lookup(sha1_hash, "virustotal"))
@@ -404,6 +401,29 @@ class ArchivePreviewDialog(QDialog):
             hash_lookup_menu.addAction(hybrid_action)
             
             context_menu.addMenu(hash_lookup_menu)
+            
+        # Add separator before copy options
+        context_menu.addSeparator()
+        
+        # Add Copy submenu at the bottom (to match streams view)
+        copy_menu = QMenu("Copy", self)
+        
+        # Add Copy options to the submenu
+        copy_name_action = QAction("File Name", self)
+        copy_name_action.triggered.connect(lambda: self.copy_to_clipboard(file_name))
+        copy_menu.addAction(copy_name_action)
+        
+        if mime_type:  # Only add if mime_type is not empty
+            copy_type_action = QAction("MIME Type", self)
+            copy_type_action.triggered.connect(lambda: self.copy_to_clipboard(mime_type))
+            copy_menu.addAction(copy_type_action)
+        
+        if sha1_hash and sha1_hash != "Error calculating hash":
+            copy_hash_action = QAction("SHA1 Hash", self)
+            copy_hash_action.triggered.connect(lambda: self.copy_to_clipboard(sha1_hash))
+            copy_menu.addAction(copy_hash_action)
+        
+        context_menu.addMenu(copy_menu)
         
         # Show the context menu
         context_menu.exec_(self.contents_tree.mapToGlobal(position))

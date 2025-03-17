@@ -4,11 +4,12 @@ Main window class for the MSI Parser GUI
 
 import os
 import webbrowser
+import json
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QPushButton, QLabel, QFileDialog, QTabWidget, QTextEdit, 
                             QTreeWidget, QMessageBox, QProgressBar,
                             QSplitter, QTableWidget, QHeaderView, QListWidget,
-                            QApplication, QLineEdit, QShortcut)
+                            QApplication, QLineEdit, QShortcut, QTextBrowser, QCheckBox, QMenu, QAction)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeySequence
 
@@ -49,6 +50,12 @@ from utils.gui.tables_tab import (
     export_selected_table,
     export_all_tables,
     filter_tables
+)
+from utils.gui.workflow_tab import (
+    display_workflow_analysis,
+    analyze_install_sequence,
+    evaluate_custom_action_impact,
+    evaluate_standard_action_impact
 )
 from utils.gui.certificate_tab import (
     extract_certificates,
@@ -239,6 +246,9 @@ class MSIParseGUI(QMainWindow):
         self.export_all_tables_button = QPushButton("Export All Tables")
         self.export_all_tables_button.clicked.connect(self.export_all_tables)
         self.export_all_tables_button.setEnabled(False)  # Disabled until tables are loaded
+        # Set up context menu policy for the export all button
+        self.export_all_tables_button.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.export_all_tables_button.customContextMenuRequested.connect(self.show_export_all_context_menu)
         tables_button_layout.addWidget(self.export_all_tables_button)
         
         tables_layout.addLayout(tables_button_layout)
@@ -269,6 +279,12 @@ class MSIParseGUI(QMainWindow):
         
         self.table_list.currentItemChanged.connect(self.table_selected)
         table_list_layout.addWidget(self.table_list)
+        
+        # Add checkbox to hide empty tables BELOW the table list
+        self.hide_empty_tables_checkbox = QCheckBox("Hide Empty Tables")
+        self.hide_empty_tables_checkbox.setChecked(False)  # Default unchecked
+        self.hide_empty_tables_checkbox.stateChanged.connect(self.filter_tables)
+        table_list_layout.addWidget(self.hide_empty_tables_checkbox)
         
         tables_splitter.addWidget(table_list_widget)
         
@@ -327,6 +343,67 @@ class MSIParseGUI(QMainWindow):
         # Add the certificate tab to the tab widget
         self.tabs.addTab(self.certificate_tab, "Certificates")
         
+        # Workflow Analysis tab
+        self.workflow_tab = QWidget()
+        workflow_layout = QVBoxLayout()
+        self.workflow_tab.setLayout(workflow_layout)
+        
+        # Add description label
+        workflow_description = QLabel("Analyze the MSI installation workflow to understand the actions and processes that will be performed during installation, highlighting potentially high-impact operations. For detailed information about MSI installation workflows, see the Help tab.")
+        workflow_description.setWordWrap(True)
+        workflow_layout.addWidget(workflow_description)
+        
+        # Button layout
+        workflow_button_layout = QHBoxLayout()
+        
+        # Button to analyze workflow
+        self.analyze_workflow_button = QPushButton("Analyze Installation Workflow")
+        self.analyze_workflow_button.clicked.connect(self.analyze_install_sequence)
+        self.analyze_workflow_button.setEnabled(False)  # Disabled until MSI is loaded
+        workflow_button_layout.addWidget(self.analyze_workflow_button)
+        
+        workflow_button_layout.addStretch()
+        workflow_layout.addLayout(workflow_button_layout)
+        
+        # Tree view for actions in sequence
+        self.sequence_tree = QTreeWidget()
+        self.sequence_tree.setColumnCount(5)
+        self.sequence_tree.setHeaderLabels(["Sequence", "Action", "Condition", "Type", "Impact"])
+        self.sequence_tree.setAlternatingRowColors(True)
+        self.sequence_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+        workflow_layout.addWidget(self.sequence_tree, 1)  # Give it stretch factor of 1
+        
+        # Add the workflow tab to the tab widget
+        self.tabs.addTab(self.workflow_tab, "Workflow Analysis")
+        
+        # Help Tab
+        self.help_tab = QWidget()
+        help_layout = QVBoxLayout()
+        self.help_tab.setLayout(help_layout)
+        
+        # Add title and introduction
+        help_title = QLabel("MSI Parser Help & Documentation")
+        help_title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        help_layout.addWidget(help_title)
+        
+        help_intro = QLabel("This section provides comprehensive documentation about MSI files and their analysis. The information below will help you understand how MSI files work and how to interpret the results displayed in other tabs.")
+        help_intro.setWordWrap(True)
+        help_layout.addWidget(help_intro)
+        
+        # Add a small vertical spacer
+        help_layout.addSpacing(10)
+        
+        # Create text browser for help content
+        self.help_html = QTextBrowser()
+        self.help_html.setOpenExternalLinks(True)
+        help_layout.addWidget(self.help_html, 1)  # Give it stretch factor of 1
+        
+        # Load the static workflow analysis documentation
+        display_workflow_analysis(self, target_widget='help')
+        
+        # Add the help tab to the tab widget
+        self.tabs.addTab(self.help_tab, "Help")
+        
         # Status bar
         self.statusBar().showMessage("Ready")
         
@@ -381,6 +458,7 @@ class MSIParseGUI(QMainWindow):
             self.export_all_tables_button.setEnabled(has_file and has_tables)
             self.extract_cert_button.setEnabled(has_file)
             self.analyze_cert_button.setEnabled(has_file)
+            self.analyze_workflow_button.setEnabled(has_file)
             
             # Update reset order button if it exists
             if hasattr(self, 'reset_order_button'):
@@ -593,15 +671,23 @@ class MSIParseGUI(QMainWindow):
         return _analyze_certificate_files(self, certificate_files)
         
     def analyze_certificate_chain_simple(self, certificates):
-        return analyze_certificate_chain_simple(self, certificates)
+        """Analyze certificate chain in a simple way"""
+        analyze_certificate_chain_simple(self, certificates)
         
     def analyze_signer_info_simple(self, signed_data):
-        return analyze_signer_info_simple(self, signed_data)
+        """Analyze signer info in a simple way"""
+        analyze_signer_info_simple(self, signed_data)
         
     def get_name_as_text(self, name):
-        return get_name_as_text(self, name)
+        """Get name as text"""
+        return get_name_as_text(name)
+        
+    def analyze_install_sequence(self):
+        """Analyze the MSI installation workflow sequence"""
+        analyze_install_sequence(self)
         
     def extract_stream_unified(self, stream_name, output_dir=None, temp=False, show_messages=True):
+        """Extract a stream and return the path to the extracted file"""
         return extract_stream_unified(self, stream_name, output_dir, temp, show_messages)
         
     def extract_file_to_temp(self, stream_name, temp_dir):
@@ -650,4 +736,87 @@ class MSIParseGUI(QMainWindow):
         return status_progress(self, message, show_progress, indeterminate)
         
     def run_command_safe(self, command, success_message=None):
-        return run_command_safe(self, command, success_message) 
+        return run_command_safe(self, command, success_message)
+
+    def show_export_all_context_menu(self, position):
+        """Show context menu for the Export All Tables button with hidden features"""
+        # Only show the menu if tables data is available
+        if not self.tables_data:
+            return
+            
+        # Create context menu
+        context_menu = QMenu(self)
+        
+        # Add export individual tables action
+        export_individual_action = QAction("Export Tables Individually", self)
+        export_individual_action.triggered.connect(self.export_tables_individually)
+        context_menu.addAction(export_individual_action)
+        
+        # Show the context menu
+        context_menu.exec_(self.export_all_tables_button.mapToGlobal(position))
+    
+    def export_tables_individually(self):
+        """Hidden feature: Export all tables as individual JSON files"""
+        if not self.tables_data:
+            return
+            
+        # Prompt for directory to save all table files
+        export_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Select Directory for Table Exports",
+            os.path.expanduser("~")
+        )
+        
+        if not export_dir:
+            return  # User cancelled
+            
+        try:
+            # Count for progress tracking
+            total_tables = len(self.tables_data)
+            exported_count = 0
+            
+            # Show progress
+            self.progress_bar.setRange(0, total_tables)
+            self.progress_bar.setValue(0)
+            self.progress_bar.setVisible(True)
+            
+            # Export each table as a separate file
+            for table in self.tables_data:
+                table_name = table["name"]
+                file_path = os.path.join(export_dir, f"{table_name}.json")
+                
+                # Update status
+                self.statusBar().showMessage(f"Exporting table {exported_count+1}/{total_tables}: {table_name}")
+                
+                # Export the table
+                with open(file_path, 'w') as f:
+                    json.dump(table, f, indent=2)
+                
+                # Update progress
+                exported_count += 1
+                self.progress_bar.setValue(exported_count)
+                QApplication.processEvents()  # Keep UI responsive
+            
+            # Hide progress bar when done
+            self.progress_bar.setVisible(False)
+            
+            # Update status
+            self.statusBar().showMessage(f"Exported {exported_count} tables to {export_dir}")
+            
+            # Show success message
+            QMessageBox.information(
+                self,
+                "Export Successful",
+                f"All tables have been exported as individual files to:\n{export_dir}"
+            )
+            
+        except Exception as e:
+            # Hide progress bar on error
+            self.progress_bar.setVisible(False)
+            
+            # Show error
+            QMessageBox.critical(
+                self,
+                "Export Failed",
+                f"Failed to export tables: {str(e)}"
+            ) 

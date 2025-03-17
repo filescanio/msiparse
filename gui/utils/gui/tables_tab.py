@@ -31,6 +31,10 @@ def display_tables(parent, output):
         parent.table_content.setRowCount(0)
         parent.table_content.setColumnCount(0)
         
+        # Count empty tables for checkbox label
+        empty_tables_count = sum(1 for table in parent.tables_data if len(table.get("rows", [])) == 0)
+        parent.hide_empty_tables_checkbox.setText(f"Hide Empty Tables ({empty_tables_count})")
+        
         # Populate the table list
         for table in parent.tables_data:
             table_name = table["name"]
@@ -78,6 +82,10 @@ def display_tables(parent, output):
         
         # Update button states
         parent.update_button_states()
+        
+        # Apply hide empty tables filter if checked
+        filter_tables(parent)
+        
     except json.JSONDecodeError:
         parent.handle_error("Parse Error", "Error parsing tables output", show_dialog=True)
         
@@ -212,39 +220,64 @@ def export_all_tables(parent):
             f"Failed to export tables: {str(e)}"
         )
 
-def filter_tables(parent, filter_text):
-    """Filter the tables list based on the input text"""
-    # If no filter text, show all items
-    if not filter_text:
-        for i in range(parent.table_list.count()):
-            parent.table_list.item(i).setHidden(False)
-        parent.statusBar().showMessage(f"Showing all {parent.table_list.count()} tables")
-        return
-        
+def filter_tables(parent, filter_text=None):
+    """Filter the tables list based on the input text and checkbox state"""
+    # If called from checkbox, the filter_text will be an integer (checkbox state)
+    # So we need to get the actual filter text from the line edit
+    if isinstance(filter_text, int) or filter_text is None:
+        filter_text = parent.table_filter.text()
+    
+    # Get checkbox state
+    hide_empty = parent.hide_empty_tables_checkbox.isChecked()
+    
     # Convert filter text to lowercase for case-insensitive matching
-    filter_text = filter_text.lower()
+    filter_text_lower = filter_text.lower() if filter_text else ""
     
-    # Count visible items for status message
+    # Count visible items and empty tables for status message
     visible_count = 0
+    empty_tables_count = 0
     
-    # Check each item against the filter
+    # First, count all empty tables
+    for table in parent.tables_data:
+        if len(table.get("rows", [])) == 0:
+            empty_tables_count += 1
+    
+    # Update checkbox label with empty tables count
+    parent.hide_empty_tables_checkbox.setText(f"Hide Empty Tables ({empty_tables_count})")
+    
+    # Check each item against the filters
     for i in range(parent.table_list.count()):
         item = parent.table_list.item(i)
+        table_name = item.text()
         
-        # Check if the table name contains the filter text
-        match_found = filter_text in item.text().lower()
-        
-        # Also check in the table description if available
-        if not match_found and item.text() in parent.msi_tables:
-            description = parent.msi_tables[item.text()].lower()
-            match_found = filter_text in description
+        # Text filter match
+        if filter_text_lower:
+            # Check if the table name contains the filter text
+            match_found = filter_text_lower in table_name.lower()
             
-        # Show or hide the item based on the match
+            # Also check in the table description if available
+            if not match_found and table_name in parent.msi_tables:
+                description = parent.msi_tables[table_name].lower()
+                match_found = filter_text_lower in description
+        else:
+            match_found = True  # No text filter, so it matches
+        
+        # Check for empty tables if the checkbox is checked
+        if hide_empty and match_found:
+            # Find the table in the data
+            table_data = next((table for table in parent.tables_data if table["name"] == table_name), None)
+            if table_data and len(table_data.get("rows", [])) == 0:
+                match_found = False  # Hide empty tables
+        
+        # Show or hide the item based on the combined match
         item.setHidden(not match_found)
         
         # Count visible items
         if match_found:
             visible_count += 1
-            
-    # Update status message
-    parent.statusBar().showMessage(f"Showing {visible_count} of {parent.table_list.count()} tables") 
+    
+    # Update status message with both filters
+    if hide_empty:
+        parent.statusBar().showMessage(f"Showing {visible_count} of {parent.table_list.count()} tables (hiding {empty_tables_count} empty tables)")
+    else:
+        parent.statusBar().showMessage(f"Showing {visible_count} of {parent.table_list.count()} tables") 
