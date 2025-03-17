@@ -10,9 +10,9 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QPushButton, QLabel, QFileDialog, QTabWidget, QTextEdit, 
                             QTreeWidget, QTreeWidgetItem, QMessageBox, QProgressBar,
                             QSplitter, QTableWidget, QTableWidgetItem, QHeaderView, QListWidget,
-                            QToolButton, QListWidgetItem, QMenu, QAction, QApplication)
+                            QToolButton, QListWidgetItem, QMenu, QAction, QApplication, QLineEdit, QShortcut)
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIcon, QFont
+from PyQt5.QtGui import QIcon, QFont, QKeySequence
 
 # Import custom modules
 from threads.command import CommandThread
@@ -282,6 +282,18 @@ class MSIParseGUI(QMainWindow):
         
         streams_layout.addLayout(streams_button_layout)
         
+        # Add filter input for streams
+        filter_layout = QHBoxLayout()
+        filter_label = QLabel("Filter:")
+        self.streams_filter = QLineEdit()
+        self.streams_filter.setPlaceholderText("Type to filter streams... (Ctrl+F)")
+        self.streams_filter.textChanged.connect(self.filter_streams)
+        self.streams_filter.setClearButtonEnabled(True)  # Add clear button inside the field
+        
+        filter_layout.addWidget(filter_label)
+        filter_layout.addWidget(self.streams_filter)
+        streams_layout.addLayout(filter_layout)
+        
         # Update streams tree to have four columns
         self.streams_tree = QTreeWidget()
         self.streams_tree.setHeaderLabels(["Stream Name", "Group", "MIME Type", "File Size", "SHA1 Hash"])
@@ -338,6 +350,18 @@ class MSIParseGUI(QMainWindow):
         table_list_layout = QVBoxLayout()
         table_list_widget.setLayout(table_list_layout)
         
+        # Add filter input for tables
+        table_filter_layout = QHBoxLayout()
+        table_filter_label = QLabel("Filter:")
+        self.table_filter = QLineEdit()
+        self.table_filter.setPlaceholderText("Type to filter tables... (Ctrl+F)")
+        self.table_filter.textChanged.connect(self.filter_tables)
+        self.table_filter.setClearButtonEnabled(True)  # Add clear button inside the field
+        
+        table_filter_layout.addWidget(table_filter_label)
+        table_filter_layout.addWidget(self.table_filter)
+        table_list_layout.addLayout(table_filter_layout)
+        
         self.table_list = QListWidget()
         self.table_list.setMaximumWidth(200)  # Limit width of the table list
         
@@ -361,6 +385,38 @@ class MSIParseGUI(QMainWindow):
         
         # Disable buttons until file is selected
         self.update_button_states()
+        
+        # Set up keyboard shortcuts
+        self.setup_shortcuts()
+        
+    def setup_shortcuts(self):
+        """Set up keyboard shortcuts for the application"""
+        # Global shortcut for Ctrl+F that works on any tab
+        self.global_filter_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        self.global_filter_shortcut.activated.connect(self.focus_current_filter)
+        
+        # Tab-specific shortcuts as fallbacks
+        self.streams_filter_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.streams_tab)
+        self.streams_filter_shortcut.activated.connect(lambda: self.streams_filter.setFocus())
+        
+        self.tables_filter_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.tables_tab)
+        self.tables_filter_shortcut.activated.connect(lambda: self.table_filter.setFocus())
+        
+        # Escape key to clear filters when they have focus
+        self.streams_filter_escape = QShortcut(QKeySequence("Escape"), self.streams_filter)
+        self.streams_filter_escape.activated.connect(self.streams_filter.clear)
+        
+        self.table_filter_escape = QShortcut(QKeySequence("Escape"), self.table_filter)
+        self.table_filter_escape.activated.connect(self.table_filter.clear)
+        
+    def focus_current_filter(self):
+        """Focus on the filter field of the currently active tab"""
+        current_tab = self.tabs.currentWidget()
+        
+        if current_tab == self.streams_tab:
+            self.streams_filter.setFocus()
+        elif current_tab == self.tables_tab:
+            self.table_filter.setFocus()
         
     def update_button_states(self):
         """Update the enabled state of buttons based on current state"""
@@ -495,6 +551,9 @@ class MSIParseGUI(QMainWindow):
         was_sorting_enabled = self.streams_tree.isSortingEnabled()
         self.streams_tree.setSortingEnabled(False)
         
+        # Get current filter text
+        current_filter = self.streams_filter.text().lower()
+        
         # Find the item for this stream
         for i in range(self.streams_tree.topLevelItemCount()):
             item = self.streams_tree.topLevelItem(i)
@@ -530,6 +589,18 @@ class MSIParseGUI(QMainWindow):
                         item.setData(3, Qt.UserRole, size_value)
                     except (ValueError, IndexError):
                         pass
+                        
+                # Apply current filter if any
+                if current_filter:
+                    # Check if any column contains the filter text
+                    match_found = False
+                    for col in range(self.streams_tree.columnCount()):
+                        if current_filter in item.text(col).lower():
+                            match_found = True
+                            break
+                            
+                    # Show or hide the item based on the match
+                    item.setHidden(not match_found)
                 break
         
         # Restore sorting state
@@ -556,7 +627,19 @@ class MSIParseGUI(QMainWindow):
         """Called when stream identification is complete"""
         self.progress_bar.setVisible(False)
         self.identify_streams_button.setEnabled(True)
-        self.statusBar().showMessage("Stream identification completed")
+        
+        # Get current filter text
+        current_filter = self.streams_filter.text().lower()
+        
+        # Count visible items if there's a filter
+        if current_filter:
+            visible_count = 0
+            for i in range(self.streams_tree.topLevelItemCount()):
+                if not self.streams_tree.topLevelItem(i).isHidden():
+                    visible_count += 1
+            self.statusBar().showMessage(f"Stream identification completed. Showing {visible_count} of {self.streams_tree.topLevelItemCount()} streams")
+        else:
+            self.statusBar().showMessage("Stream identification completed")
         
         # Resize columns to fit content
         self.resize_streams_columns()
@@ -722,6 +805,9 @@ class MSIParseGUI(QMainWindow):
         try:
             streams = json.loads(output)
             self.streams_data = streams  # Store for later use
+            
+            # Clear any existing filter
+            self.streams_filter.clear()
             
             # Disable sorting while populating
             self.streams_tree.setSortingEnabled(False)
@@ -950,6 +1036,9 @@ class MSIParseGUI(QMainWindow):
         try:
             self.tables_data = json.loads(output)
             
+            # Clear any existing filter
+            self.table_filter.clear()
+            
             # Clear the table list and content
             self.table_list.clear()
             self.table_content.clear()
@@ -1119,12 +1208,18 @@ class MSIParseGUI(QMainWindow):
             size_value = item.data(3, Qt.UserRole)
             stream_data[stream_name] = (group, mime_type, file_size, sha1_hash, size_value)
         
+        # Get current filter text
+        current_filter = self.streams_filter.text().lower()
+        
         # Clear and repopulate the tree
         self.streams_tree.clear()
         
         # Create monospaced font for hash columns
         mono_font = QFont("Courier New", 10)
         mono_font.setFixedPitch(True)
+        
+        # Count visible items for status message
+        visible_count = 0
         
         for stream in self.streams_data:
             # Get stored data if available
@@ -1156,6 +1251,22 @@ class MSIParseGUI(QMainWindow):
             # Restore selection
             if stream in selected_streams:
                 item.setSelected(True)
+                
+            # Apply current filter if any
+            if current_filter:
+                # Check if any column contains the filter text
+                match_found = False
+                for col in range(self.streams_tree.columnCount()):
+                    if current_filter in item.text(col).lower():
+                        match_found = True
+                        break
+                        
+                # Show or hide the item based on the match
+                item.setHidden(not match_found)
+                
+                # Count visible items
+                if match_found:
+                    visible_count += 1
         
         # Re-enable sorting
         self.streams_tree.setSortingEnabled(True)
@@ -1167,7 +1278,10 @@ class MSIParseGUI(QMainWindow):
         self.resize_streams_columns()
         
         # Update status
-        self.statusBar().showMessage("Restored original order")
+        if current_filter:
+            self.statusBar().showMessage(f"Restored original order. Showing {visible_count} of {self.streams_tree.topLevelItemCount()} streams")
+        else:
+            self.statusBar().showMessage("Restored original order")
 
     def show_streams_context_menu(self, position):
         """Show context menu for the streams tree"""
@@ -1492,3 +1606,76 @@ class MSIParseGUI(QMainWindow):
             webbrowser.open(url)
         except Exception as e:
             self.show_error("Browser Error", f"Failed to open browser: {str(e)}")
+
+    def filter_streams(self, filter_text):
+        """Filter the streams tree based on the input text"""
+        # If no filter text, show all items
+        if not filter_text:
+            for i in range(self.streams_tree.topLevelItemCount()):
+                self.streams_tree.topLevelItem(i).setHidden(False)
+            self.statusBar().showMessage(f"Showing all {self.streams_tree.topLevelItemCount()} streams")
+            return
+            
+        # Convert filter text to lowercase for case-insensitive matching
+        filter_text = filter_text.lower()
+        
+        # Count visible items for status message
+        visible_count = 0
+        
+        # Check each item against the filter
+        for i in range(self.streams_tree.topLevelItemCount()):
+            item = self.streams_tree.topLevelItem(i)
+            
+            # Check if any column contains the filter text
+            match_found = False
+            for col in range(self.streams_tree.columnCount()):
+                if filter_text in item.text(col).lower():
+                    match_found = True
+                    break
+                    
+            # Show or hide the item based on the match
+            item.setHidden(not match_found)
+            
+            # Count visible items
+            if match_found:
+                visible_count += 1
+                
+        # Update status message
+        self.statusBar().showMessage(f"Showing {visible_count} of {self.streams_tree.topLevelItemCount()} streams")
+        
+    def filter_tables(self, filter_text):
+        """Filter the tables list based on the input text"""
+        # If no filter text, show all items
+        if not filter_text:
+            for i in range(self.table_list.count()):
+                self.table_list.item(i).setHidden(False)
+            self.statusBar().showMessage(f"Showing all {self.table_list.count()} tables")
+            return
+            
+        # Convert filter text to lowercase for case-insensitive matching
+        filter_text = filter_text.lower()
+        
+        # Count visible items for status message
+        visible_count = 0
+        
+        # Check each item against the filter
+        for i in range(self.table_list.count()):
+            item = self.table_list.item(i)
+            
+            # Check if the table name contains the filter text
+            match_found = filter_text in item.text().lower()
+            
+            # Also check in the table description if available
+            if not match_found and item.text() in self.msi_tables:
+                description = self.msi_tables[item.text()].lower()
+                match_found = filter_text in description
+                
+            # Show or hide the item based on the match
+            item.setHidden(not match_found)
+            
+            # Count visible items
+            if match_found:
+                visible_count += 1
+                
+        # Update status message
+        self.statusBar().showMessage(f"Showing {visible_count} of {self.table_list.count()} tables")
