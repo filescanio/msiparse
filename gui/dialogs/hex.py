@@ -1,10 +1,11 @@
 from PyQt5.QtWidgets import QTextEdit, QApplication, QMessageBox
 from PyQt5.QtGui import QFont
 from dialogs.base import BasePreviewDialog
+import os
 
 class HexViewDialog(BasePreviewDialog):
     """Dialog for displaying hex view of stream content"""
-    def __init__(self, parent, file_name, file_path):
+    def __init__(self, parent, file_name, file_path_or_content):
         # Create hex view widget
         self.hex_view = QTextEdit()
         self.hex_view.setReadOnly(True)
@@ -18,14 +19,23 @@ class HexViewDialog(BasePreviewDialog):
         # Initialize base dialog
         super().__init__(parent, f"Hex View: {file_name}", self.hex_view)
         
-        # Read and display file content
-        try:
-            with open(file_path, 'rb') as f:
-                content = f.read()
-            self.format_hex_view(content)
-        except Exception as e:
-            self.set_status(f"Error reading file: {str(e)}")
-            QMessageBox.critical(self, "Error", f"Failed to read file: {str(e)}")
+        # Determine if we have a file path or content
+        if isinstance(file_path_or_content, (bytes, bytearray)):
+            # We have binary content directly
+            self.format_hex_view(file_path_or_content)
+        else:
+            # We have a file path, read the content
+            try:
+                if os.path.exists(file_path_or_content):
+                    with open(file_path_or_content, 'rb') as f:
+                        content = f.read()
+                    self.format_hex_view(content)
+                else:
+                    self.set_status(f"Error: File not found: {file_path_or_content}")
+                    QMessageBox.critical(self, "Error", f"File not found: {file_path_or_content}")
+            except Exception as e:
+                self.set_status(f"Error reading file: {str(e)}")
+                QMessageBox.critical(self, "Error", f"Failed to read file: {str(e)}")
         
     def format_hex_view(self, content):
         """Format the content as a hex view"""
