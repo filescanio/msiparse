@@ -1,3 +1,4 @@
+# ruff: noqa: E722
 import subprocess
 import tempfile
 import shutil

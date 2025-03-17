@@ -4,7 +4,7 @@ import shutil
 import webbrowser
 from pathlib import Path
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
-                           QTreeWidget, QTreeWidgetItem, QMessageBox, QProgressBar,
+                           QTreeWidget, QMessageBox, QProgressBar,
                            QMenu, QAction, QFileDialog, QApplication, QLineEdit, QShortcut)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeySequence, QFont
@@ -533,7 +533,7 @@ class ArchivePreviewDialog(QDialog):
                 mono_font = QFont("Courier New", 10)
                 mono_font.setFixedPitch(True)
                 item.setFont(4, mono_font)
-            except Exception as e:
+            except Exception:
                 item.setText(4, "Error calculating hash")
         else:
             item.setText(4, "")

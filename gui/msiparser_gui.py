@@ -1,3 +1,15 @@
+#!/usr/bin/env python3
+"""
+MSI Parser GUI - Main Implementation
+
+This file contains the main implementation for the MSI Parser GUI application.
+It can be run directly as a script:
+    python msiparser_gui.py
+
+Or as a module (recommended, using the __main__.py entry point):
+    python -m msiparser_gui
+"""
+
 # ruff: noqa: E722
 import sys
 import os

@@ -1,3 +1,4 @@
+# ruff: noqa: E722
 """
 Common utility functions used across the application.
 """
@@ -6,8 +7,7 @@ import tempfile
 import shutil
 import contextlib
 import os
-from PyQt5.QtWidgets import (QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem, 
-                            QHeaderView, QApplication, QMessageBox)
+from PyQt5.QtWidgets import (QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QApplication)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 
