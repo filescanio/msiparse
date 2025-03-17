@@ -3,7 +3,51 @@ use serde::Serialize;
 use std::fs::File;
 use std::io;
 use std::path::Path;
+use std::io::{Read, Write};
 use time::OffsetDateTime;
+
+pub const DIGITAL_SIGNATURE_STREAM_NAME: &str = "\u{5}DigitalSignature";
+pub const MSI_DIGITAL_SIGNATURE_EX_STREAM_NAME: &str = "\u{5}MsiDigitalSignatureEx";
+
+// Helper function to sanitize stream names for file system
+fn sanitize_stream_name(name: &str) -> String {
+    // Remove control characters and other non-printable characters
+    name.chars()
+        .filter(|&c| c.is_ascii_graphic() || c.is_ascii_whitespace())
+        .collect()
+}
+
+// Helper function to extract a stream from a compound file and save it to disk
+fn extract_cfb_stream(comp_file: &mut cfb::CompoundFile<File>, stream_name: &str, output_dir: &Path) -> bool {
+    match comp_file.open_stream(stream_name) {
+        Ok(mut stream) => {
+            // Sanitize the stream name for file system
+            let sanitized_name = sanitize_stream_name(stream_name);
+            let output_path = output_dir.join(&sanitized_name);
+            
+            match File::create(&output_path) {
+                Ok(mut file) => {
+                    let mut buffer = Vec::new();
+                    if stream.read_to_end(&mut buffer).is_ok() {
+                        if file.write_all(&buffer).is_ok() {
+                            println!("Successfully extracted {} to {}", 
+                                stream_name, 
+                                output_path.display());
+                            return true;
+                        } else {
+                            eprintln!("Failed to write {} to file", stream_name);
+                        }
+                    } else {
+                        eprintln!("Failed to read {} stream", stream_name);
+                    }
+                },
+                Err(e) => eprintln!("Failed to create output file: {}", e),
+            }
+        },
+        Err(e) => eprintln!("Failed to open {} stream: {}", stream_name, e),
+    }
+    false
+}
 
 // Dump an MSI stream from a package into a file
 // Output is a path, file's name will always be the stream's name
@@ -14,12 +58,15 @@ fn dump_stream(stream_name: &str, package: &mut msi::Package<File>, output_dir: 
         return false;
     }
     let mut stream = stream_opt.unwrap();
-    let stream_path = output_dir.join(stream_name);
+    
+    // Sanitize the stream name for file system
+    let sanitized_name = sanitize_stream_name(stream_name);
+    let stream_path = output_dir.join(&sanitized_name);
 
     let file_result = File::create(&stream_path);
 
     if file_result.is_ok() {
-        println!("Copying steam '{}' to file '{}'", stream_name, stream_path.to_str().unwrap());
+        println!("Copying stream '{}' to file '{}'", stream_name, stream_path.to_str().unwrap());
         io::copy(&mut stream, &mut file_result.unwrap()).expect("io::copy failed");
         true
     } else {
@@ -45,6 +92,35 @@ fn extract(stream_name: &str, input: &str, output_dir: &Path) {
     let mut package = msi::open(input).expect("open package");
     dump_stream(stream_name, &mut package, output_dir);
 }
+
+// CLI main function
+// Extract digital signatures from the MSI file using the CFB library
+fn extract_certificate(input: &str, output_dir: &Path) {
+    match cfb::open(input) {
+        Ok(mut comp_file) => {
+            let has_signature = comp_file.exists(DIGITAL_SIGNATURE_STREAM_NAME);
+            let has_signature_ex = comp_file.exists(MSI_DIGITAL_SIGNATURE_EX_STREAM_NAME);
+            
+            if has_signature || has_signature_ex {
+                println!("MSI file has a digital signature");
+                
+                // Extract the DigitalSignature stream if it exists
+                if has_signature {
+                    extract_cfb_stream(&mut comp_file, DIGITAL_SIGNATURE_STREAM_NAME, output_dir);
+                }
+                
+                // Extract the MsiDigitalSignatureEx stream if it exists
+                if has_signature_ex {
+                    extract_cfb_stream(&mut comp_file, MSI_DIGITAL_SIGNATURE_EX_STREAM_NAME, output_dir);
+                }
+            } else {
+                println!("MSI file does not have a digital signature");
+            }
+        },
+        Err(e) => eprintln!("Failed to open MSI file as a Compound File Binary: {}", e),
+    }
+}
+
 
 #[derive(Serialize)]
 struct MsiTable {
@@ -239,6 +315,12 @@ fn main() {
                 .arg(Arg::new("out_folder").required(true))
                 .arg(Arg::new("stream_name").required(true)),
         )
+        .subcommand(
+            Command::new("extract_certificate")
+                .about("Extract a certificate if it exists in the MSI")
+                .arg(Arg::new("in_path").required(true))
+                .arg(Arg::new("out_folder").required(true)),
+        )
         .get_matches();
 
     match matches.subcommand() {
@@ -264,6 +346,16 @@ fn main() {
                     .get_one::<String>("out_folder")
                     .expect("Output missing"),
             ),
+        ),
+        Some(("extract_certificate", sub_matches)) => extract_certificate(
+            sub_matches
+                .get_one::<String>("in_path")
+                .expect("Path missing"),
+            Path::new(
+                    sub_matches
+                        .get_one::<String>("out_folder")
+                        .expect("Output missing"),
+                ),
         ),
         Some(("list_streams", sub_matches)) => list_streams(
             sub_matches
