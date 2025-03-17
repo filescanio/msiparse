@@ -1,10 +1,10 @@
-from PyQt5.QtWidgets import QTextEdit, QApplication
+from PyQt5.QtWidgets import QTextEdit, QApplication, QMessageBox
 from PyQt5.QtGui import QFont
 from dialogs.base import BasePreviewDialog
 
 class HexViewDialog(BasePreviewDialog):
     """Dialog for displaying hex view of stream content"""
-    def __init__(self, parent, stream_name, content):
+    def __init__(self, parent, file_name, file_path):
         # Create hex view widget
         self.hex_view = QTextEdit()
         self.hex_view.setReadOnly(True)
@@ -16,10 +16,16 @@ class HexViewDialog(BasePreviewDialog):
         self.hex_view.setFont(font)
         
         # Initialize base dialog
-        super().__init__(parent, f"Hex View: {stream_name}", self.hex_view)
+        super().__init__(parent, f"Hex View: {file_name}", self.hex_view)
         
-        # Format and display content
-        self.format_hex_view(content)
+        # Read and display file content
+        try:
+            with open(file_path, 'rb') as f:
+                content = f.read()
+            self.format_hex_view(content)
+        except Exception as e:
+            self.set_status(f"Error reading file: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to read file: {str(e)}")
         
     def format_hex_view(self, content):
         """Format the content as a hex view"""
@@ -48,31 +54,40 @@ class HexViewDialog(BasePreviewDialog):
             
             for row in range(chunk_start, chunk_end):
                 offset = row * 16
+                
+                # Format offset
                 line = f"{offset:08X} | "
-                ascii_text = ""
+                
+                # Format hex values
+                hex_values = ""
+                ascii_values = ""
                 
                 for col in range(16):
-                    byte_pos = row * 16 + col
-                    if byte_pos < num_bytes:
-                        byte_val = content[byte_pos]
-                        line += f"{byte_val:02X} "
+                    pos = offset + col
+                    if pos < num_bytes:
+                        byte = content[pos]
+                        hex_values += f"{byte:02X} "
+                        
+                        # Add extra space after 8 bytes
                         if col == 7:
-                            line += " "
-                        ascii_text += chr(byte_val) if 32 <= byte_val <= 126 else "."
+                            hex_values += " "
+                            
+                        # Format ASCII representation
+                        if 32 <= byte <= 126:  # Printable ASCII
+                            ascii_values += chr(byte)
+                        else:
+                            ascii_values += "."
                     else:
-                        line += "   "
+                        # Padding for incomplete rows
+                        hex_values += "   "
                         if col == 7:
-                            line += " "
-                        ascii_text += " "
+                            hex_values += " "
+                        ascii_values += " "
                 
-                line += "| " + ascii_text + "\n"
+                # Combine parts
+                line += hex_values + "| " + ascii_values + "\n"
                 chunk_content += line
             
-            current_text = self.hex_view.toPlainText()
-            self.hex_view.setText(current_text + chunk_content)
-            QApplication.processEvents()
-        
-        # Move cursor to start
-        cursor = self.hex_view.textCursor()
-        cursor.movePosition(cursor.Start)
-        self.hex_view.setTextCursor(cursor)
+            # Append chunk to display
+            self.hex_view.append(chunk_content)
+            QApplication.processEvents()  # Keep UI responsive
