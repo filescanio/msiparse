@@ -5,8 +5,9 @@ import webbrowser
 from pathlib import Path
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
                            QTreeWidget, QTreeWidgetItem, QMessageBox, QProgressBar,
-                           QMenu, QAction, QFileDialog, QApplication)
+                           QMenu, QAction, QFileDialog, QApplication, QLineEdit, QShortcut)
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QKeySequence, QFont
 import magika
 
 # Import common utilities
@@ -71,6 +72,18 @@ class ArchivePreviewDialog(QDialog):
         
         layout.addLayout(button_layout)
         
+        # Add filter input for archive contents
+        filter_layout = QHBoxLayout()
+        filter_label = QLabel("Filter:")
+        self.contents_filter = QLineEdit()
+        self.contents_filter.setPlaceholderText("Type to filter contents... (Ctrl+F)")
+        self.contents_filter.textChanged.connect(self.filter_contents)
+        self.contents_filter.setClearButtonEnabled(True)  # Add clear button inside the field
+        
+        filter_layout.addWidget(filter_label)
+        filter_layout.addWidget(self.contents_filter)
+        layout.addLayout(filter_layout)
+        
         # Create a tree widget for the archive contents
         self.contents_tree = QTreeWidget()
         self.contents_tree.setHeaderLabels(["Name", "Group", "MIME Type", "Size", "SHA1 Hash"])
@@ -86,6 +99,81 @@ class ArchivePreviewDialog(QDialog):
         close_button = QPushButton("Close")
         close_button.clicked.connect(self.close_and_cleanup)
         layout.addWidget(close_button)
+        
+        # Set up keyboard shortcuts
+        self.setup_shortcuts()
+        
+    def setup_shortcuts(self):
+        """Set up keyboard shortcuts for the dialog"""
+        # Ctrl+F to focus on filter
+        self.filter_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        self.filter_shortcut.activated.connect(lambda: self.contents_filter.setFocus())
+        
+        # Escape key to clear filter when it has focus
+        self.filter_escape = QShortcut(QKeySequence("Escape"), self.contents_filter)
+        self.filter_escape.activated.connect(self.contents_filter.clear)
+        
+    def filter_contents(self, filter_text):
+        """Filter the contents tree based on the input text"""
+        # If no filter text, show all items
+        if not filter_text:
+            self.show_all_items(self.contents_tree.invisibleRootItem())
+            self.status_label.setText(f"Archive: {self.archive_name} ({len(self.archive_entries)} files)")
+            return
+            
+        # Convert filter text to lowercase for case-insensitive matching
+        filter_text = filter_text.lower()
+        
+        # Apply filter recursively and count visible items
+        visible_count = self.apply_filter_recursive(self.contents_tree.invisibleRootItem(), filter_text)
+        
+        # Update status message
+        self.status_label.setText(f"Archive: {self.archive_name} (showing {visible_count} of {len(self.archive_entries)} files)")
+        
+    def show_all_items(self, parent_item):
+        """Show all items in the tree recursively"""
+        # Process all child items
+        for i in range(parent_item.childCount()):
+            child = parent_item.child(i)
+            child.setHidden(False)
+            self.show_all_items(child)
+            
+    def apply_filter_recursive(self, parent_item, filter_text):
+        """Apply filter recursively to all items and return count of visible items"""
+        visible_count = 0
+        
+        # Process all child items
+        for i in range(parent_item.childCount()):
+            child = parent_item.child(i)
+            
+            # Check if this is a file (has path data)
+            is_file = child.data(0, Qt.UserRole) is not None
+            
+            if is_file:
+                # Check if any column contains the filter text
+                match_found = False
+                for col in range(self.contents_tree.columnCount()):
+                    if filter_text in child.text(col).lower():
+                        match_found = True
+                        break
+                        
+                # Show or hide the item based on the match
+                child.setHidden(not match_found)
+                
+                # Count visible items
+                if match_found:
+                    visible_count += 1
+            else:
+                # For directories, check children recursively
+                child_visible_count = self.apply_filter_recursive(child, filter_text)
+                
+                # Show directory if any children are visible
+                child.setHidden(child_visible_count == 0)
+                
+                # Add to visible count
+                visible_count += child_visible_count
+                
+        return visible_count
         
     def close_and_cleanup(self):
         """Close the dialog and clean up temporary files"""
@@ -345,8 +433,8 @@ class ArchivePreviewDialog(QDialog):
                 
                 # Update the item with file information
                 if group and mime_type:
-                    FileIdentificationHelper.update_tree_item_with_file_info(
-                        item, group, mime_type, None, self.group_icons, 
+                    self.update_item_with_file_info(
+                        item, group, mime_type, None, 
                         size_text="Unknown", hash_text="Extraction failed"
                     )
                     if show_message:
@@ -374,13 +462,13 @@ class ArchivePreviewDialog(QDialog):
             
             # Update the item with file information
             if file_exists:
-                FileIdentificationHelper.update_tree_item_with_file_info(
-                    item, group, mime_type, str(file_path_obj), self.group_icons
+                self.update_item_with_file_info(
+                    item, group, mime_type, str(file_path_obj)
                 )
             else:
                 # Update with limited information if file doesn't exist
-                FileIdentificationHelper.update_tree_item_with_file_info(
-                    item, group, mime_type, None, self.group_icons,
+                self.update_item_with_file_info(
+                    item, group, mime_type, None,
                     size_text="Unknown", hash_text="Extraction failed"
                 )
             
@@ -393,8 +481,8 @@ class ArchivePreviewDialog(QDialog):
             try:
                 group, mime_type = FileIdentificationHelper.identify_by_extension(item.text(0))
                 if group and mime_type:
-                    FileIdentificationHelper.update_tree_item_with_file_info(
-                        item, group, mime_type, None, self.group_icons,
+                    self.update_item_with_file_info(
+                        item, group, mime_type, None,
                         size_text="Unknown", hash_text="Error: " + str(e)[:100]
                     )
                     if show_message:
@@ -411,6 +499,69 @@ class ArchivePreviewDialog(QDialog):
             item.setText(2, "Error: " + str(e)[:50])  # MIME type (truncated error)
             if self.group_icons and "unknown" in self.group_icons:
                 item.setIcon(0, self.group_icons["unknown"])
+                
+    def update_item_with_file_info(self, item, group, mime_type, file_path, size_text=None, hash_text=None):
+        """Update a tree item with file information, respecting the current filter"""
+        # Get current filter text
+        current_filter = self.contents_filter.text().lower()
+        
+        # Update the item with file information
+        item.setText(1, group)
+        item.setText(2, mime_type)
+        
+        # Set size if provided, otherwise calculate it
+        if size_text:
+            item.setText(3, size_text)
+        elif file_path:
+            try:
+                file_size = os.path.getsize(file_path)
+                item.setText(3, format_file_size(file_size))
+            except Exception:
+                item.setText(3, "Unknown")
+        else:
+            item.setText(3, "Unknown")
+            
+        # Set hash if provided, otherwise calculate it
+        if hash_text:
+            item.setText(4, hash_text)
+        elif file_path:
+            try:
+                sha1 = calculate_sha1(file_path)
+                item.setText(4, sha1)
+                
+                # Set monospaced font for the hash column
+                mono_font = QFont("Courier New", 10)
+                mono_font.setFixedPitch(True)
+                item.setFont(4, mono_font)
+            except Exception as e:
+                item.setText(4, "Error calculating hash")
+        else:
+            item.setText(4, "")
+            
+        # Set icon based on group
+        if self.group_icons and group in self.group_icons:
+            item.setIcon(0, self.group_icons[group])
+        elif self.group_icons and "unknown" in self.group_icons:
+            item.setIcon(0, self.group_icons["unknown"])
+            
+        # Apply current filter if any
+        if current_filter:
+            # Check if any column contains the filter text
+            match_found = False
+            for col in range(self.contents_tree.columnCount()):
+                if current_filter in item.text(col).lower():
+                    match_found = True
+                    break
+                    
+            # Show or hide the item based on the match
+            item.setHidden(not match_found)
+            
+            # If this is a file in a directory, we need to make sure the parent directories are visible
+            parent = item.parent()
+            while parent and parent != self.contents_tree.invisibleRootItem():
+                if match_found:  # If this item matches, make sure all parent directories are visible
+                    parent.setHidden(False)
+                parent = parent.parent()
         
     def extract_file(self, item):
         """Extract a file from the archive to a temporary directory"""
@@ -649,3 +800,38 @@ class ArchivePreviewDialog(QDialog):
             self.progress_bar.setVisible(False)
             self.status_label.setText(f"Error: {str(e)}")
             QMessageBox.critical(self, "Error", f"Error showing archive preview: {str(e)}")
+
+    def identify_streams_finished(self):
+        """Called when stream identification is complete"""
+        self.progress_bar.setVisible(False)
+        self.identify_button.setEnabled(True)
+        
+        # Get current filter text
+        current_filter = self.contents_filter.text().lower()
+        
+        # Count visible items if there's a filter
+        if current_filter:
+            visible_count = self.count_visible_items_recursive(self.contents_tree.invisibleRootItem())
+            self.status_label.setText(f"File identification completed. Showing {visible_count} of {len(self.archive_entries)} files")
+        else:
+            self.status_label.setText("File identification completed")
+        
+        # Resize columns to fit content
+        TableHelper.auto_resize_columns(self.contents_tree)
+        
+    def count_visible_items_recursive(self, parent_item):
+        """Count visible items in the tree recursively"""
+        visible_count = 0
+        
+        # Process all child items
+        for i in range(parent_item.childCount()):
+            child = parent_item.child(i)
+            
+            # If item is not hidden and is a file (has path data)
+            if not child.isHidden() and child.data(0, Qt.UserRole) is not None:
+                visible_count += 1
+                
+            # Add count from children
+            visible_count += self.count_visible_items_recursive(child)
+                
+        return visible_count
