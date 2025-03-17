@@ -7,13 +7,12 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLa
                            QTreeWidget, QTreeWidgetItem, QMessageBox, QProgressBar,
                            QMenu, QAction, QFileDialog, QApplication)
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
 import magika
 
 # Import common utilities
 from utils.common import (format_file_size, calculate_sha1, TableHelper, TreeHelper, 
                          FileIdentificationHelper)
-from utils.preview import (PreviewHelper, show_hex_view_dialog, show_text_preview_dialog, 
+from utils.preview import (show_hex_view_dialog, show_text_preview_dialog, 
                           show_image_preview_dialog)
 
 # Try to import libarchive for archive handling
@@ -260,7 +259,6 @@ class ArchivePreviewDialog(QDialog):
         # Get file name and group/mime type if available
         file_name = item.text(0)
         group = item.text(1)
-        mime_type = item.text(2)
         sha1_hash = item.text(4)
         
         # Create context menu
@@ -333,8 +331,9 @@ class ArchivePreviewDialog(QDialog):
             
         try:
             # Update status to show which file we're processing
-            self.status_label.setText(f"Identifying: {item.text(0)}...")
-            QApplication.processEvents()  # Ensure UI updates
+            if show_message:
+                self.status_label.setText(f"Identifying: {item.text(0)}...")
+                QApplication.processEvents()  # Ensure UI updates
             
             # Extract the file to a temporary location
             file_path = self.extract_file(item)
@@ -358,16 +357,8 @@ class ArchivePreviewDialog(QDialog):
                 return
                 
             # Convert to Path object for better file existence check
-            from pathlib import Path
             file_path_obj = Path(file_path)
             file_exists = file_path_obj.exists() and file_path_obj.is_file()
-            
-            # Debug message
-            if file_exists:
-                self.status_label.setText(f"Identifying file: {item.text(0)} from {file_path}")
-            else:
-                self.status_label.setText(f"Identifying file by name: {item.text(0)}")
-            QApplication.processEvents()  # Ensure UI updates
             
             # Identify the file
             if file_exists:
@@ -380,10 +371,6 @@ class ArchivePreviewDialog(QDialog):
             else:
                 # Fallback to extension-based identification
                 group, mime_type = FileIdentificationHelper.identify_by_extension(item.text(0))
-            
-            # Debug message
-            self.status_label.setText(f"Identified {item.text(0)} as {mime_type} (group: {group})")
-            QApplication.processEvents()  # Ensure UI updates
             
             # Update the item with file information
             if file_exists:
@@ -451,7 +438,6 @@ class ArchivePreviewDialog(QDialog):
             output_path = os.path.join(self.temp_dir, safe_filename)
             
             # Convert to pathlib.Path for better compatibility
-            from pathlib import Path
             output_path_obj = Path(output_path)
             
             # Check if the file has already been extracted
@@ -480,7 +466,6 @@ class ArchivePreviewDialog(QDialog):
                 # Ensure parent directory exists
                 output_path_obj.parent.mkdir(parents=True, exist_ok=True)
                 # Copy the file
-                import shutil
                 shutil.copy2(self.archive_path, str(output_path_obj))
                 if output_path_obj.exists():
                     self.extracted_files.add(str(output_path_obj))
@@ -502,8 +487,28 @@ class ArchivePreviewDialog(QDialog):
             
     def _extract_with_file_reader(self, normalized_path, output_path):
         """Extract a file using libarchive.file_reader"""
-        try:
-            with libarchive.file_reader(self.archive_path) as archive:
+        with libarchive.file_reader(self.archive_path) as archive:
+            for entry in archive:
+                entry_path = entry.pathname.replace('\\', '/').lstrip('/')
+                if entry_path == normalized_path:
+                    # Create parent directories if needed
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                    
+                    # Extract the file
+                    with open(output_path, 'wb') as output_file:
+                        for block in entry.get_blocks():
+                            output_file.write(block)
+                            
+                    # Add to extracted files set
+                    self.extracted_files.add(output_path)
+                    return output_path
+                    
+        return None
+        
+    def _extract_with_archive_class(self, normalized_path, output_path):
+        """Extract a file using libarchive.Archive class"""
+        with open(self.archive_path, 'rb') as archive_file:
+            with libarchive.Archive(archive_file) as archive:
                 for entry in archive:
                     entry_path = entry.pathname.replace('\\', '/').lstrip('/')
                     if entry_path == normalized_path:
@@ -519,33 +524,7 @@ class ArchivePreviewDialog(QDialog):
                         self.extracted_files.add(output_path)
                         return output_path
                         
-            return None
-        except Exception:
-            raise
-            
-    def _extract_with_archive_class(self, normalized_path, output_path):
-        """Extract a file using libarchive.Archive class"""
-        try:
-            with open(self.archive_path, 'rb') as archive_file:
-                with libarchive.Archive(archive_file) as archive:
-                    for entry in archive:
-                        entry_path = entry.pathname.replace('\\', '/').lstrip('/')
-                        if entry_path == normalized_path:
-                            # Create parent directories if needed
-                            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                            
-                            # Extract the file
-                            with open(output_path, 'wb') as output_file:
-                                for block in entry.get_blocks():
-                                    output_file.write(block)
-                                    
-                            # Add to extracted files set
-                            self.extracted_files.add(output_path)
-                            return output_path
-                            
-            return None
-        except Exception:
-            raise
+        return None
         
     def extract_file_to_user_location(self, item):
         """Extract a file to a user-specified location"""

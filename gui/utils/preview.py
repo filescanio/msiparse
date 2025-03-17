@@ -73,32 +73,4 @@ def show_archive_preview_dialog(parent, archive_name, archive_path, group_icons,
             parent.show_error("Archive Preview Error", e)
         else:
             QMessageBox.critical(parent, "Error", f"Error showing archive preview: {str(e)}")
-        return False
-
-class PreviewHelper:
-    """Helper class for preview functionality used across the application."""
-    
-    @staticmethod
-    def show_preview_for_file(parent, file_name, file_path, file_group, group_icons=None, auto_identify=False):
-        """Show an appropriate preview dialog based on the file group
-        
-        Args:
-            parent: The parent widget
-            file_name: The name of the file
-            file_path: The path to the file
-            file_group: The group of the file (image, text, code, document, archive)
-            group_icons: Dictionary of icons for different file groups (needed for archive preview)
-            auto_identify: Whether to auto-identify files in archives (default: False)
-            
-        Returns:
-            True if preview was shown successfully, False otherwise
-        """
-        if file_group == "image":
-            return show_image_preview_dialog(parent, file_name, file_path)
-        elif file_group in ["text", "code", "document"]:
-            return show_text_preview_dialog(parent, file_name, file_path)
-        elif file_group == "archive" and group_icons is not None:
-            return show_archive_preview_dialog(parent, file_name, file_path, group_icons, auto_identify)
-        else:
-            # Default to hex view for other file types
-            return show_hex_view_dialog(parent, file_name, file_path) 
+        return False 

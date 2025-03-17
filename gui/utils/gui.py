@@ -23,30 +23,9 @@ from dialogs.archive import ArchivePreviewDialog
 from dialogs.text import TextPreviewDialog
 from dialogs.hex import HexViewDialog
 from dialogs.image import ImagePreviewDialog
+from utils.common import temp_directory, format_file_size
 
 # Helper functions that were previously imported from main
-@contextlib.contextmanager
-def temp_directory():
-    """Context manager for creating and cleaning up a temporary directory"""
-    temp_dir = tempfile.mkdtemp()
-    try:
-        yield temp_dir
-    finally:
-        try:
-            shutil.rmtree(temp_dir)
-        except:
-            pass
-
-def format_file_size(size_bytes):
-    """Format file size in a human-readable format"""
-    if size_bytes < 1024:
-        return f"{size_bytes} B"
-    elif size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.1f} KB"
-    elif size_bytes < 1024 * 1024 * 1024:
-        return f"{size_bytes / (1024 * 1024):.1f} MB"
-    else:
-        return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
 
 def show_text_preview_dialog(parent, file_name, file_path):
     """Show a text preview dialog for the given file path"""
@@ -1370,10 +1349,8 @@ class MSIParseGUI(QMainWindow):
             return None
             
         # Create temp directory if needed
-        created_temp_dir = False
         if temp and not output_dir:
             output_dir = tempfile.mkdtemp()
-            created_temp_dir = True
             
         try:
             # Show progress if requested
