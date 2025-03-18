@@ -20,7 +20,7 @@ except ImportError:
     CERT_ANALYSIS_AVAILABLE = False
 
 def extract_certificates(parent):
-    """Extract digital signatures from the MSI file"""
+    """Save digital signatures from the MSI file to disk"""
     if not parent.msi_file_path:
         parent.show_error("Error", "No MSI file selected")
         return
@@ -29,13 +29,10 @@ def extract_certificates(parent):
     output_dir = parent.get_output_directory()
     if not output_dir:
         return
-        
-    # Clear previous status
-    parent.cert_status.clear()
-    parent.cert_status.append("Extracting digital signatures...")
     
     # Show progress
     parent.progress_bar.setVisible(True)
+    parent.statusBar().showMessage("Saving digital signatures to disk...")
     
     # Build command
     command = [
@@ -54,12 +51,10 @@ def handle_certificate_extraction_complete(parent, output):
     
     # Process the output
     if "MSI file has a digital signature" in output:
-        parent.cert_status.append("✅ Digital signature found in the MSI file")
+        parent.statusBar().showMessage("Digital signature found and saved successfully")
         
         # Check for successful extraction messages
         if "Successfully extracted" in output:
-            parent.cert_status.append("\nExtracted signature files:")
-            
             # Parse the output to find extracted files
             extracted_files = []
             for line in output.split('\n'):
@@ -68,34 +63,25 @@ def handle_certificate_extraction_complete(parent, output):
                     parts = line.split(" to ")
                     if len(parts) == 2:
                         file_path = parts[1].strip()
-                        file_name = os.path.basename(file_path)
-                        parent.cert_status.append(f"- {file_name}")
                         extracted_files.append(file_path)
             
             # Store the extracted files for later analysis
             parent.extracted_cert_files = extracted_files
             
-            # Enable the analyze button
-            parent.analyze_cert_button.setEnabled(True)
-            
-            # Add a note about what to do with the certificates
-            parent.cert_status.append("\nThese files contain the digital signature data. You can:")
-            parent.cert_status.append("1. Use tools like 'signtool verify' to validate the signature")
-            parent.cert_status.append("2. Extract certificate information with OpenSSL or similar tools")
-            parent.cert_status.append("3. Click 'Analyze Signature' to view detailed certificate information")
-            
             # Show success message
             QMessageBox.information(
                 parent,
-                "Extraction Complete",
-                "Digital signatures have been extracted successfully."
+                "Save Complete",
+                "Digital signatures have been saved successfully."
             )
+            
+            # Automatically analyze the certificate - show dialogs since user explicitly requested certificate extraction
+            parent.analyze_certificate(show_dialogs=True)
         else:
-            parent.cert_status.append("⚠️ Signature found but extraction may have failed. Check the output directory.")
-            parent.analyze_cert_button.setEnabled(False)
+            parent.statusBar().showMessage("Signature found but extraction may have failed")
+            parent.show_warning("Extraction Issue", "Signature found but extraction may have failed. Check the output directory.")
     elif "MSI file does not have a digital signature" in output:
-        parent.cert_status.append("❌ No digital signature found in the MSI file")
-        parent.analyze_cert_button.setEnabled(False)
+        parent.statusBar().showMessage("No digital signature found in the MSI file")
         
         # Show info message
         QMessageBox.information(
@@ -104,26 +90,31 @@ def handle_certificate_extraction_complete(parent, output):
             "This MSI file does not contain a digital signature."
         )
     else:
-        parent.cert_status.append("⚠️ Unexpected output from certificate extraction:")
-        parent.cert_status.append(output)
-        parent.analyze_cert_button.setEnabled(False)
+        parent.statusBar().showMessage("Unexpected output from certificate extraction")
         
         # Show warning
         parent.show_warning("Extraction Issue", "Unexpected output from certificate extraction. Check the log for details.")
         
-def analyze_certificate(parent):
-    """Analyze the extracted certificate"""
+def analyze_certificate(parent, show_dialogs=False):
+    """Analyze the extracted certificate
+    
+    Args:
+        parent: The parent window object
+        show_dialogs: Whether to show message boxes on errors/warnings (default: False)
+    """
     if not parent.msi_file_path:
-        parent.show_warning("No MSI File", "Please select an MSI file first.")
+        if show_dialogs:
+            parent.show_warning("No MSI File", "Please select an MSI file first.")
         return
         
     # Check if certificate analysis libraries are available
     if not CERT_ANALYSIS_AVAILABLE:
-        parent.show_warning(
-            "Missing Dependencies", 
-            "Certificate analysis requires the 'cryptography' and 'asn1crypto' libraries.\n\n"
-            "Please install them with:\npip install cryptography asn1crypto"
-        )
+        if show_dialogs:
+            parent.show_warning(
+                "Missing Dependencies", 
+                "Certificate analysis requires the 'cryptography' and 'asn1crypto' libraries.\n\n"
+                "Please install them with:\npip install cryptography asn1crypto"
+            )
         return
         
     # Clear previous details
@@ -131,14 +122,12 @@ def analyze_certificate(parent):
     
     # If certificates haven't been extracted yet, extract them to a temporary directory
     if not hasattr(parent, 'extracted_cert_files') or not parent.extracted_cert_files:
-        parent.cert_status.clear()
-        parent.cert_status.append("Extracting digital signatures to temporary location...")
+        # Show progress
+        parent.progress_bar.setVisible(True)
+        parent.statusBar().showMessage("Extracting digital signatures to temporary location...")
         
         # Create a temporary directory for extraction
         with temp_directory() as temp_dir:
-            # Show progress
-            parent.progress_bar.setVisible(True)
-            
             try:
                 # Build and run command
                 command = [
@@ -159,7 +148,7 @@ def analyze_certificate(parent):
                 
                 # Process the output
                 if "MSI file has a digital signature" in output:
-                    parent.cert_status.append("✅ Digital signature found in the MSI file")
+                    parent.statusBar().showMessage("Digital signature found, analyzing...")
                     
                     # Find extracted files
                     extracted_files = []
@@ -169,13 +158,11 @@ def analyze_certificate(parent):
                             parts = line.split(" to ")
                             if len(parts) == 2:
                                 file_path = parts[1].strip()
-                                file_name = os.path.basename(file_path)
-                                parent.cert_status.append(f"- {file_name}")
                                 extracted_files.append(file_path)
                     
                     # If no files were extracted, show warning and return
                     if not extracted_files:
-                        parent.cert_status.append("⚠️ No signature files were extracted.")
+                        parent.statusBar().showMessage("No signature files were extracted")
                         parent.progress_bar.setVisible(False)
                         return
                         
@@ -183,27 +170,31 @@ def analyze_certificate(parent):
                     _analyze_certificate_files(parent, extracted_files)
                     
                 elif "MSI file does not have a digital signature" in output:
-                    parent.cert_status.append("❌ No digital signature found in the MSI file")
+                    parent.statusBar().showMessage("No digital signature found in the MSI file")
                     parent.progress_bar.setVisible(False)
                     
-                    # Show info message
-                    QMessageBox.information(
-                        parent,
-                        "No Signature",
-                        "This MSI file does not contain a digital signature."
-                    )
+                    # Only show message box if explicitly requested
+                    if show_dialogs:
+                        QMessageBox.information(
+                            parent,
+                            "No Signature",
+                            "This MSI file does not contain a digital signature."
+                        )
                 else:
-                    parent.cert_status.append("⚠️ Unexpected output from certificate extraction:")
-                    parent.cert_status.append(output)
+                    parent.statusBar().showMessage("Unexpected output from certificate extraction")
                     parent.progress_bar.setVisible(False)
                     
-                    # Show warning
-                    parent.show_warning("Extraction Issue", "Unexpected output from certificate extraction. Check the log for details.")
+                    # Only show warning if explicitly requested
+                    if show_dialogs:
+                        parent.show_warning("Extraction Issue", "Unexpected output from certificate extraction.")
                     
             except Exception as e:
-                parent.cert_status.append(f"❌ Error extracting certificates: {str(e)}")
+                parent.statusBar().showMessage(f"Error extracting certificates: {str(e)}")
                 parent.progress_bar.setVisible(False)
-                parent.show_error("Extraction Error", f"Failed to extract certificates: {str(e)}")
+                
+                # Only show error dialog if explicitly requested
+                if show_dialogs:
+                    parent.show_error("Extraction Error", f"Failed to extract certificates: {str(e)}")
                 
             finally:
                 # Hide progress bar
@@ -211,6 +202,9 @@ def analyze_certificate(parent):
     else:
         # Use previously extracted certificate files
         _analyze_certificate_files(parent, parent.extracted_cert_files)
+    
+    # Scroll to the beginning after analysis is complete
+    parent.cert_details.moveCursor(parent.cert_details.textCursor().Start)
         
 def _analyze_certificate_files(parent, certificate_files):
     """Internal method to analyze certificate files"""
@@ -222,6 +216,7 @@ def _analyze_certificate_files(parent, certificate_files):
             break
             
     if not signature_file:
+        parent.statusBar().showMessage("Missing DigitalSignature file")
         parent.show_warning("Missing Signature File", "The DigitalSignature file was not found among the extracted files.")
         return
         
@@ -255,6 +250,7 @@ def _analyze_certificate_files(parent, certificate_files):
                 parent.cert_details.append("<h3>Certificate Chain</h3>")
                 analyze_certificate_chain_simple(parent, pkcs7_obj)
         except Exception as e:
+            parent.statusBar().showMessage(f"Error parsing certificates: {str(e)}")
             parent.cert_details.append(f"<p style='color:red'>Error parsing certificates: {str(e)}</p>")
             
         # Try to extract signer information
@@ -262,10 +258,19 @@ def _analyze_certificate_files(parent, certificate_files):
             parent.cert_details.append("<h3>Signer Information</h3>")
             analyze_signer_info_simple(parent, signed_data)
         except Exception as e:
+            parent.statusBar().showMessage(f"Error parsing signer info: {str(e)}")
             parent.cert_details.append(f"<p style='color:red'>Error parsing signer info: {str(e)}</p>")
+        
+        # Signal success in status bar
+        parent.statusBar().showMessage("Certificate analysis completed successfully")
+        
+        # Scroll to the beginning
+        parent.cert_details.moveCursor(parent.cert_details.textCursor().Start)
             
     except Exception as e:
+        parent.statusBar().showMessage(f"Error analyzing certificate: {str(e)}")
         parent.cert_details.append(f"<p style='color:red'>Error analyzing certificate: {str(e)}</p>")
+        parent.cert_details.moveCursor(parent.cert_details.textCursor().Start)
         
 def analyze_certificate_chain_simple(parent, certificates):
     """Analyze the certificate chain from a PKCS#7 signature - simplified version"""

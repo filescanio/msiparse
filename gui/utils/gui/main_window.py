@@ -51,7 +51,11 @@ from utils.gui.tables_tab import (
     export_all_tables,
     filter_tables
 )
-from utils.gui.workflow_tab import (
+from utils.gui.footprint_tab import (
+    analyze_installation_impact,
+    display_installation_impact
+)
+from utils.gui.execution_tab import (
     display_workflow_analysis,
     analyze_install_sequence,
     evaluate_custom_action_impact,
@@ -144,265 +148,25 @@ class MSIParseGUI(QMainWindow):
         self.progress_bar.setVisible(False)
         main_layout.addWidget(self.progress_bar)
         
+        # Create and store tab references
+        self.metadata_tab = self.create_metadata_tab()
+        self.streams_tab = self.create_streams_tab()
+        self.tables_tab = self.create_tables_tab()
+        self.certificates_tab = self.create_certificates_tab()
+        self.execution_tab = self.create_execution_tab()
+        self.footprint_tab = self.create_footprint_tab()
+        self.help_tab = self.create_help_tab()
+        
         # Tab widget for different functions
         self.tabs = QTabWidget()
-        main_layout.addWidget(self.tabs)
-        
-        # Metadata tab
-        self.metadata_tab = QWidget()
-        metadata_layout = QVBoxLayout()
-        self.metadata_tab.setLayout(metadata_layout)
-        
-        self.metadata_text = QTextEdit()
-        self.metadata_text.setReadOnly(True)
-        metadata_layout.addWidget(self.metadata_text)
-        
         self.tabs.addTab(self.metadata_tab, "Metadata")
-        
-        # Streams tab
-        self.streams_tab = QWidget()
-        streams_layout = QVBoxLayout()
-        self.streams_tab.setLayout(streams_layout)
-        
-        streams_button_layout = QHBoxLayout()
-        
-        # Add Identify Streams button
-        self.identify_streams_button = QPushButton("Identify Stream Types")
-        self.identify_streams_button.clicked.connect(self.identify_streams)
-        streams_button_layout.addWidget(self.identify_streams_button)
-        
-        # Add Reset Order button
-        self.reset_order_button = QPushButton("Reset to Original Order")
-        self.reset_order_button.clicked.connect(self.reset_to_original_order)
-        streams_button_layout.addWidget(self.reset_order_button)
-        
-        # Add spacer to separate button groups
-        streams_button_layout.addStretch()
-        
-        # Add Extract All button
-        self.extract_all_button = QPushButton("Extract All Streams")
-        self.extract_all_button.clicked.connect(self.extract_all_streams)
-        streams_button_layout.addWidget(self.extract_all_button)
-        
-        # Move Extract Stream button to top row
-        self.extract_stream_button = QPushButton("Extract Selected Streams")
-        self.extract_stream_button.clicked.connect(self.extract_stream)
-        streams_button_layout.addWidget(self.extract_stream_button)
-        
-        streams_layout.addLayout(streams_button_layout)
-        
-        # Add filter input for streams
-        filter_layout = QHBoxLayout()
-        filter_label = QLabel("Filter:")
-        self.streams_filter = QLineEdit()
-        self.streams_filter.setPlaceholderText("Type to filter streams... (Ctrl+F)")
-        self.streams_filter.textChanged.connect(self.filter_streams)
-        self.streams_filter.setClearButtonEnabled(True)  # Add clear button inside the field
-        
-        filter_layout.addWidget(filter_label)
-        filter_layout.addWidget(self.streams_filter)
-        streams_layout.addLayout(filter_layout)
-        
-        # Update streams tree to have four columns
-        self.streams_tree = QTreeWidget()
-        self.streams_tree.setHeaderLabels(["Stream Name", "Group", "MIME Type", "File Size", "SHA1 Hash"])
-        self.streams_tree.itemClicked.connect(self.stream_selected)
-        self.streams_tree.setSelectionMode(QTreeWidget.ExtendedSelection)  # Allow multiple selection
-        
-        # Connect to selectionChanged signal to handle multiple selection
-        self.streams_tree.itemSelectionChanged.connect(self.on_stream_selection_changed)
-        
-        # Enable context menu for streams tree
-        self.streams_tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.streams_tree.customContextMenuRequested.connect(self.show_streams_context_menu)
-        
-        # Enable sorting but keep original order initially
-        self.streams_tree.setSortingEnabled(True)  # Enable sorting
-        self.streams_tree.header().setSortIndicator(-1, Qt.AscendingOrder)  # No initial sorting
-        
-        # Store original order
-        self.original_order = True
-        
-        # Connect to sort indicator changed signal
-        self.streams_tree.header().sortIndicatorChanged.connect(self.on_sort_indicator_changed)
-        
-        streams_layout.addWidget(self.streams_tree)
-        
         self.tabs.addTab(self.streams_tab, "Streams")
-        
-        # Tables tab - redesigned with split view
-        self.tables_tab = QWidget()
-        tables_layout = QVBoxLayout()
-        self.tables_tab.setLayout(tables_layout)
-        
-        # Add buttons for table export
-        tables_button_layout = QHBoxLayout()
-        
-        self.export_selected_table_button = QPushButton("Export Selected Table")
-        self.export_selected_table_button.clicked.connect(self.export_selected_table)
-        self.export_selected_table_button.setEnabled(False)  # Disabled until a table is selected
-        tables_button_layout.addWidget(self.export_selected_table_button)
-        
-        self.export_all_tables_button = QPushButton("Export All Tables")
-        self.export_all_tables_button.clicked.connect(self.export_all_tables)
-        self.export_all_tables_button.setEnabled(False)  # Disabled until tables are loaded
-        # Set up context menu policy for the export all button
-        self.export_all_tables_button.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.export_all_tables_button.customContextMenuRequested.connect(self.show_export_all_context_menu)
-        tables_button_layout.addWidget(self.export_all_tables_button)
-        
-        tables_layout.addLayout(tables_button_layout)
-        
-        # Create a splitter for the tables view
-        tables_splitter = QSplitter(Qt.Horizontal)
-        tables_layout.addWidget(tables_splitter)
-        
-        # Left side - Table list with info buttons
-        table_list_widget = QWidget()
-        table_list_layout = QVBoxLayout()
-        table_list_widget.setLayout(table_list_layout)
-        
-        # Add filter input for tables
-        table_filter_layout = QHBoxLayout()
-        table_filter_label = QLabel("Filter:")
-        self.table_filter = QLineEdit()
-        self.table_filter.setPlaceholderText("Type to filter tables... (Ctrl+F)")
-        self.table_filter.textChanged.connect(self.filter_tables)
-        self.table_filter.setClearButtonEnabled(True)  # Add clear button inside the field
-        
-        table_filter_layout.addWidget(table_filter_label)
-        table_filter_layout.addWidget(self.table_filter)
-        table_list_layout.addLayout(table_filter_layout)
-        
-        self.table_list = QListWidget()
-        self.table_list.setMaximumWidth(200)  # Limit width of the table list
-        
-        self.table_list.currentItemChanged.connect(self.table_selected)
-        table_list_layout.addWidget(self.table_list)
-        
-        # Add checkbox to hide empty tables BELOW the table list
-        self.hide_empty_tables_checkbox = QCheckBox("Hide Empty Tables")
-        self.hide_empty_tables_checkbox.setChecked(False)  # Default unchecked
-        self.hide_empty_tables_checkbox.stateChanged.connect(self.filter_tables)
-        table_list_layout.addWidget(self.hide_empty_tables_checkbox)
-        
-        tables_splitter.addWidget(table_list_widget)
-        
-        # Right side - Table content
-        self.table_content = QTableWidget()
-        self.table_content.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        tables_splitter.addWidget(self.table_content)
-        
-        # Set initial splitter sizes
-        tables_splitter.setSizes([200, 600])
-        
         self.tabs.addTab(self.tables_tab, "Tables")
-        
-        # Certificate tab
-        self.certificate_tab = QWidget()
-        certificate_layout = QVBoxLayout()
-        self.certificate_tab.setLayout(certificate_layout)
-        
-        # Add description label
-        cert_description = QLabel("Extract digital signatures from the MSI file. Digital signatures are used to verify the authenticity and integrity of the MSI package.")
-        cert_description.setWordWrap(True)
-        certificate_layout.addWidget(cert_description)
-        
-        # Add button to extract certificates
-        cert_button_layout = QHBoxLayout()
-        self.extract_cert_button = QPushButton("Extract Digital Signatures")
-        self.extract_cert_button.clicked.connect(self.extract_certificates)
-        cert_button_layout.addWidget(self.extract_cert_button)
-        
-        # Add analyze button
-        self.analyze_cert_button = QPushButton("Analyze Signature")
-        self.analyze_cert_button.clicked.connect(self.analyze_certificate)
-        self.analyze_cert_button.setEnabled(False)  # Disabled until certificate is extracted
-        cert_button_layout.addWidget(self.analyze_cert_button)
-        
-        cert_button_layout.addStretch()
-        certificate_layout.addLayout(cert_button_layout)
-        
-        # Create a splitter for certificate information
-        cert_splitter = QSplitter(Qt.Vertical)
-        certificate_layout.addWidget(cert_splitter, 1)
-        
-        # Top part - Status and basic info
-        self.cert_status = QTextEdit()
-        self.cert_status.setReadOnly(True)
-        cert_splitter.addWidget(self.cert_status)
-        
-        # Bottom part - Detailed certificate information
-        self.cert_details = QTextEdit()
-        self.cert_details.setReadOnly(True)
-        cert_splitter.addWidget(self.cert_details)
-        
-        # Set initial splitter sizes
-        cert_splitter.setSizes([200, 400])
-        
-        # Add the certificate tab to the tab widget
-        self.tabs.addTab(self.certificate_tab, "Certificates")
-        
-        # Workflow Analysis tab
-        self.workflow_tab = QWidget()
-        workflow_layout = QVBoxLayout()
-        self.workflow_tab.setLayout(workflow_layout)
-        
-        # Add description label
-        workflow_description = QLabel("Analyze the MSI installation workflow to understand the actions and processes that will be performed during installation, highlighting potentially high-impact operations. For detailed information about MSI installation workflows, see the Help tab.")
-        workflow_description.setWordWrap(True)
-        workflow_layout.addWidget(workflow_description)
-        
-        # Button layout
-        workflow_button_layout = QHBoxLayout()
-        
-        # Button to analyze workflow
-        self.analyze_workflow_button = QPushButton("Analyze Installation Workflow")
-        self.analyze_workflow_button.clicked.connect(self.analyze_install_sequence)
-        self.analyze_workflow_button.setEnabled(False)  # Disabled until MSI is loaded
-        workflow_button_layout.addWidget(self.analyze_workflow_button)
-        
-        workflow_button_layout.addStretch()
-        workflow_layout.addLayout(workflow_button_layout)
-        
-        # Tree view for actions in sequence
-        self.sequence_tree = QTreeWidget()
-        self.sequence_tree.setColumnCount(5)
-        self.sequence_tree.setHeaderLabels(["Sequence", "Action", "Condition", "Type", "Impact"])
-        self.sequence_tree.setAlternatingRowColors(True)
-        self.sequence_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-        workflow_layout.addWidget(self.sequence_tree, 1)  # Give it stretch factor of 1
-        
-        # Add the workflow tab to the tab widget
-        self.tabs.addTab(self.workflow_tab, "Workflow Analysis")
-        
-        # Help Tab
-        self.help_tab = QWidget()
-        help_layout = QVBoxLayout()
-        self.help_tab.setLayout(help_layout)
-        
-        # Add title and introduction
-        help_title = QLabel("MSI Parser Help & Documentation")
-        help_title.setStyleSheet("font-size: 16px; font-weight: bold;")
-        help_layout.addWidget(help_title)
-        
-        help_intro = QLabel("This section provides comprehensive documentation about MSI files and their analysis. The information below will help you understand how MSI files work and how to interpret the results displayed in other tabs.")
-        help_intro.setWordWrap(True)
-        help_layout.addWidget(help_intro)
-        
-        # Add a small vertical spacer
-        help_layout.addSpacing(10)
-        
-        # Create text browser for help content
-        self.help_html = QTextBrowser()
-        self.help_html.setOpenExternalLinks(True)
-        help_layout.addWidget(self.help_html, 1)  # Give it stretch factor of 1
-        
-        # Load the static workflow analysis documentation
-        display_workflow_analysis(self, target_widget='help')
-        
-        # Add the help tab to the tab widget
+        self.tabs.addTab(self.certificates_tab, "Certificates")
+        self.tabs.addTab(self.execution_tab, "Execution")
+        self.tabs.addTab(self.footprint_tab, "Footprint")
         self.tabs.addTab(self.help_tab, "Help")
+        main_layout.addWidget(self.tabs)
         
         # Status bar
         self.statusBar().showMessage("Ready")
@@ -410,7 +174,7 @@ class MSIParseGUI(QMainWindow):
         # Disable buttons until file is selected
         self.update_button_states()
         
-        # Set up keyboard shortcuts
+        # Set up keyboard shortcuts after tabs are created
         self.setup_shortcuts()
         
     def setup_shortcuts(self):
@@ -420,18 +184,22 @@ class MSIParseGUI(QMainWindow):
         self.global_filter_shortcut.activated.connect(self.focus_current_filter)
         
         # Tab-specific shortcuts as fallbacks
-        self.streams_filter_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.streams_tab)
-        self.streams_filter_shortcut.activated.connect(lambda: self.streams_filter.setFocus())
+        if hasattr(self, 'streams_tab'):
+            self.streams_filter_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.streams_tab)
+            self.streams_filter_shortcut.activated.connect(lambda: self.streams_filter.setFocus())
         
-        self.tables_filter_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.tables_tab)
-        self.tables_filter_shortcut.activated.connect(lambda: self.table_filter.setFocus())
+        if hasattr(self, 'tables_tab'):
+            self.tables_filter_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.tables_tab)
+            self.tables_filter_shortcut.activated.connect(lambda: self.table_filter.setFocus())
         
         # Escape key to clear filters when they have focus
-        self.streams_filter_escape = QShortcut(QKeySequence("Escape"), self.streams_filter)
-        self.streams_filter_escape.activated.connect(self.streams_filter.clear)
+        if hasattr(self, 'streams_filter'):
+            self.streams_filter_escape = QShortcut(QKeySequence("Escape"), self.streams_filter)
+            self.streams_filter_escape.activated.connect(self.streams_filter.clear)
         
-        self.table_filter_escape = QShortcut(QKeySequence("Escape"), self.table_filter)
-        self.table_filter_escape.activated.connect(self.table_filter.clear)
+        if hasattr(self, 'table_filter'):
+            self.table_filter_escape = QShortcut(QKeySequence("Escape"), self.table_filter)
+            self.table_filter_escape.activated.connect(self.table_filter.clear)
         
     def focus_current_filter(self):
         """Focus on the filter field of the currently active tab"""
@@ -457,8 +225,6 @@ class MSIParseGUI(QMainWindow):
             self.export_selected_table_button.setEnabled(has_file and has_selected_table)
             self.export_all_tables_button.setEnabled(has_file and has_tables)
             self.extract_cert_button.setEnabled(has_file)
-            self.analyze_cert_button.setEnabled(has_file)
-            self.analyze_workflow_button.setEnabled(has_file)
             
             # Update reset order button if it exists
             if hasattr(self, 'reset_order_button'):
@@ -486,7 +252,6 @@ class MSIParseGUI(QMainWindow):
             self.statusBar().showMessage(f"Selected MSI file: {file_path}")
             
             # Clear certificate status and details
-            self.cert_status.clear()
             self.cert_details.clear()
             
             # Reset extracted certificate files
@@ -497,6 +262,9 @@ class MSIParseGUI(QMainWindow):
             self.get_metadata()
             self.list_streams()
             self.list_tables()
+            
+            # Auto-analyze certificates when file is selected (no dialogs)
+            self.analyze_certificate(show_dialogs=False)
             
     def stream_selected(self, item):
         """Handle single item click in the streams tree"""
@@ -664,8 +432,8 @@ class MSIParseGUI(QMainWindow):
     def handle_certificate_extraction_complete(self, output):
         return handle_certificate_extraction_complete(self, output)
         
-    def analyze_certificate(self):
-        return analyze_certificate(self)
+    def analyze_certificate(self, show_dialogs=True):
+        return analyze_certificate(self, show_dialogs)
         
     def _analyze_certificate_files(self, certificate_files):
         return _analyze_certificate_files(self, certificate_files)
@@ -819,4 +587,390 @@ class MSIParseGUI(QMainWindow):
                 self,
                 "Export Failed",
                 f"Failed to export tables: {str(e)}"
-            ) 
+            )
+
+    def analyze_installation_impact(self):
+        """Analyze the MSI package to identify all system changes that will occur during installation"""
+        analyze_installation_impact(self)
+        
+    def display_installation_impact(self, output):
+        """Display the results of the installation impact analysis"""
+        display_installation_impact(self, output)
+
+    def show_tables_context_menu(self, position):
+        """Show context menu for tables list"""
+        item = self.table_list.itemAt(position)
+        if item:
+            menu = QMenu()
+            copy_action = QAction("Copy Table Name", self)
+            copy_action.triggered.connect(lambda: self.copy_table_name(item))
+            menu.addAction(copy_action)
+            menu.exec_(self.table_list.mapToGlobal(position))
+    
+    def copy_table_name(self, item):
+        """Copy the table name to clipboard"""
+        if item:
+            table_name = item.text()
+            QApplication.clipboard().setText(table_name)
+            self.statusBar().showMessage(f"Copied table name: {table_name}", 2000)
+
+    def show_impact_context_menu(self, position):
+        """Show context menu for the impact tree"""
+        item = self.impact_tree.itemAt(position)
+        if item:
+            menu = QMenu()
+            
+            # Add copy actions in the specified order
+            copy_entry_action = QAction("Copy Entry", self)
+            copy_entry_action.triggered.connect(lambda: self.copy_impact_item(item, 1))  # Copy Entry column
+            menu.addAction(copy_entry_action)
+            
+            copy_concern_action = QAction("Copy Concern", self)
+            copy_concern_action.triggered.connect(lambda: self.copy_impact_item(item, 2))  # Copy Concern column
+            menu.addAction(copy_concern_action)
+            
+            copy_details_action = QAction("Copy Details", self)
+            copy_details_action.triggered.connect(lambda: self.copy_impact_item(item, 3))  # Copy Details column
+            menu.addAction(copy_details_action)
+            
+            # Add separator
+            menu.addSeparator()
+            
+            copy_full_line_action = QAction("Copy Full Line", self)
+            copy_full_line_action.triggered.connect(lambda: self.copy_impact_full_line(item))
+            menu.addAction(copy_full_line_action)
+            
+            menu.exec_(self.impact_tree.mapToGlobal(position))
+    
+    def copy_impact_item(self, item, column):
+        """Copy a specific column from the impact item"""
+        if item:
+            text = item.text(column)
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage(f"Copied: {text[:50]}...", 2000)
+    
+    def copy_impact_full_line(self, item):
+        """Copy all columns from the impact item as a tab-separated line"""
+        if item:
+            # Skip the Type column (0) and only include Entry, Concern, and Details
+            text = f"{item.text(1)}\t{item.text(2)}\t{item.text(3)}"
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage("Copied full line", 2000)
+
+    def show_sequence_context_menu(self, position):
+        """Show context menu for the sequence tree"""
+        item = self.sequence_tree.itemAt(position)
+        if item:
+            menu = QMenu()
+            
+            # Add copy actions for each column
+            copy_sequence_action = QAction("Copy Sequence", self)
+            copy_sequence_action.triggered.connect(lambda: self.copy_sequence_item(item, 0))
+            menu.addAction(copy_sequence_action)
+            
+            copy_action_action = QAction("Copy Action", self)
+            copy_action_action.triggered.connect(lambda: self.copy_sequence_item(item, 1))
+            menu.addAction(copy_action_action)
+            
+            copy_condition_action = QAction("Copy Condition", self)
+            copy_condition_action.triggered.connect(lambda: self.copy_sequence_item(item, 2))
+            menu.addAction(copy_condition_action)
+            
+            copy_type_action = QAction("Copy Type", self)
+            copy_type_action.triggered.connect(lambda: self.copy_sequence_item(item, 3))
+            menu.addAction(copy_type_action)
+            
+            copy_impact_action = QAction("Copy Impact", self)
+            copy_impact_action.triggered.connect(lambda: self.copy_sequence_item(item, 4))
+            menu.addAction(copy_impact_action)
+            
+            # Add separator
+            menu.addSeparator()
+            
+            copy_full_line_action = QAction("Copy Full Line", self)
+            copy_full_line_action.triggered.connect(lambda: self.copy_sequence_full_line(item))
+            menu.addAction(copy_full_line_action)
+            
+            menu.exec_(self.sequence_tree.mapToGlobal(position))
+    
+    def copy_sequence_item(self, item, column):
+        """Copy a specific column from the sequence item"""
+        if item:
+            text = item.text(column)
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage(f"Copied: {text[:50]}...", 2000)
+    
+    def copy_sequence_full_line(self, item):
+        """Copy all columns from the sequence item as a tab-separated line"""
+        if item:
+            # Copy all columns as tab-separated text
+            text = "\t".join(item.text(i) for i in range(5))
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage("Copied full line", 2000)
+
+    def create_metadata_tab(self):
+        """Create the metadata tab"""
+        metadata_tab = QWidget()
+        metadata_layout = QVBoxLayout()
+        metadata_tab.setLayout(metadata_layout)
+        
+        self.metadata_text = QTextEdit()
+        self.metadata_text.setReadOnly(True)
+        metadata_layout.addWidget(self.metadata_text)
+        
+        return metadata_tab
+
+    def create_streams_tab(self):
+        """Create the streams tab"""
+        streams_tab = QWidget()
+        streams_layout = QVBoxLayout()
+        streams_tab.setLayout(streams_layout)
+        
+        streams_button_layout = QHBoxLayout()
+        
+        # Add Identify Streams button
+        self.identify_streams_button = QPushButton("Identify Stream Types")
+        self.identify_streams_button.clicked.connect(self.identify_streams)
+        streams_button_layout.addWidget(self.identify_streams_button)
+        
+        # Add Reset Order button
+        self.reset_order_button = QPushButton("Reset to Original Order")
+        self.reset_order_button.clicked.connect(self.reset_to_original_order)
+        streams_button_layout.addWidget(self.reset_order_button)
+        
+        # Add spacer to separate button groups
+        streams_button_layout.addStretch()
+        
+        # Add Extract All button
+        self.extract_all_button = QPushButton("Extract All Streams")
+        self.extract_all_button.clicked.connect(self.extract_all_streams)
+        streams_button_layout.addWidget(self.extract_all_button)
+        
+        # Move Extract Stream button to top row
+        self.extract_stream_button = QPushButton("Extract Selected Streams")
+        self.extract_stream_button.clicked.connect(self.extract_stream)
+        streams_button_layout.addWidget(self.extract_stream_button)
+        
+        streams_layout.addLayout(streams_button_layout)
+        
+        # Add filter input for streams
+        filter_layout = QHBoxLayout()
+        filter_label = QLabel("Filter:")
+        self.streams_filter = QLineEdit()
+        self.streams_filter.setPlaceholderText("Type to filter streams... (Ctrl+F)")
+        self.streams_filter.textChanged.connect(self.filter_streams)
+        self.streams_filter.setClearButtonEnabled(True)
+        
+        filter_layout.addWidget(filter_label)
+        filter_layout.addWidget(self.streams_filter)
+        streams_layout.addLayout(filter_layout)
+        
+        # Update streams tree to have four columns
+        self.streams_tree = QTreeWidget()
+        self.streams_tree.setHeaderLabels(["Stream Name", "Group", "MIME Type", "File Size", "SHA1 Hash"])
+        self.streams_tree.itemClicked.connect(self.stream_selected)
+        self.streams_tree.setSelectionMode(QTreeWidget.ExtendedSelection)
+        
+        # Connect to selectionChanged signal to handle multiple selection
+        self.streams_tree.itemSelectionChanged.connect(self.on_stream_selection_changed)
+        
+        # Enable context menu for streams tree
+        self.streams_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.streams_tree.customContextMenuRequested.connect(self.show_streams_context_menu)
+        
+        # Enable sorting but keep original order initially
+        self.streams_tree.setSortingEnabled(True)
+        self.streams_tree.header().setSortIndicator(-1, Qt.AscendingOrder)
+        
+        # Store original order
+        self.original_order = True
+        
+        # Connect to sort indicator changed signal
+        self.streams_tree.header().sortIndicatorChanged.connect(self.on_sort_indicator_changed)
+        
+        streams_layout.addWidget(self.streams_tree)
+        
+        return streams_tab
+
+    def create_tables_tab(self):
+        """Create the tables tab"""
+        tables_tab = QWidget()
+        tables_layout = QVBoxLayout()
+        tables_tab.setLayout(tables_layout)
+        
+        # Add buttons for table export
+        tables_button_layout = QHBoxLayout()
+        
+        self.export_selected_table_button = QPushButton("Export Selected Table")
+        self.export_selected_table_button.clicked.connect(self.export_selected_table)
+        self.export_selected_table_button.setEnabled(False)
+        tables_button_layout.addWidget(self.export_selected_table_button)
+        
+        self.export_all_tables_button = QPushButton("Export All Tables")
+        self.export_all_tables_button.clicked.connect(self.export_all_tables)
+        self.export_all_tables_button.setEnabled(False)
+        self.export_all_tables_button.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.export_all_tables_button.customContextMenuRequested.connect(self.show_export_all_context_menu)
+        tables_button_layout.addWidget(self.export_all_tables_button)
+        
+        tables_layout.addLayout(tables_button_layout)
+        
+        # Create a splitter for the tables view
+        tables_splitter = QSplitter(Qt.Horizontal)
+        tables_layout.addWidget(tables_splitter)
+        
+        # Left side - Table list with info buttons
+        table_list_widget = QWidget()
+        table_list_layout = QVBoxLayout()
+        table_list_widget.setLayout(table_list_layout)
+        
+        # Add filter input for tables
+        table_filter_layout = QHBoxLayout()
+        table_filter_label = QLabel("Filter:")
+        self.table_filter = QLineEdit()
+        self.table_filter.setPlaceholderText("Type to filter tables... (Ctrl+F)")
+        self.table_filter.textChanged.connect(self.filter_tables)
+        self.table_filter.setClearButtonEnabled(True)
+        
+        table_filter_layout.addWidget(table_filter_label)
+        table_filter_layout.addWidget(self.table_filter)
+        table_list_layout.addLayout(table_filter_layout)
+        
+        self.table_list = QListWidget()
+        self.table_list.setMaximumWidth(200)
+        
+        # Enable context menu for table list
+        self.table_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table_list.customContextMenuRequested.connect(self.show_tables_context_menu)
+        
+        self.table_list.currentItemChanged.connect(self.table_selected)
+        table_list_layout.addWidget(self.table_list)
+        
+        # Add checkbox to hide empty tables
+        self.hide_empty_tables_checkbox = QCheckBox("Hide Empty Tables")
+        self.hide_empty_tables_checkbox.setChecked(False)
+        self.hide_empty_tables_checkbox.stateChanged.connect(self.filter_tables)
+        table_list_layout.addWidget(self.hide_empty_tables_checkbox)
+        
+        tables_splitter.addWidget(table_list_widget)
+        
+        # Right side - Table content
+        self.table_content = QTableWidget()
+        self.table_content.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        tables_splitter.addWidget(self.table_content)
+        
+        # Set initial splitter sizes
+        tables_splitter.setSizes([200, 600])
+        
+        return tables_tab
+
+    def create_certificates_tab(self):
+        """Create the certificates tab"""
+        certificate_tab = QWidget()
+        certificate_layout = QVBoxLayout()
+        certificate_tab.setLayout(certificate_layout)
+        
+        # Add description label
+        cert_description = QLabel("Digital signatures verify the authenticity and integrity of the MSI package. Certificates are analyzed automatically when loading an MSI file. Use the Save button to extract certificate files to disk.")
+        cert_description.setWordWrap(True)
+        certificate_layout.addWidget(cert_description)
+        
+        # Add button to extract certificates
+        cert_button_layout = QHBoxLayout()
+        self.extract_cert_button = QPushButton("Save Digital Signatures (DER Encoded PKCS#7)")
+        self.extract_cert_button.clicked.connect(self.extract_certificates)
+        cert_button_layout.addWidget(self.extract_cert_button)
+        
+        cert_button_layout.addStretch()
+        certificate_layout.addLayout(cert_button_layout)
+        
+        # Create a splitter for certificate information
+        cert_splitter = QSplitter(Qt.Vertical)
+        certificate_layout.addWidget(cert_splitter, 1)
+        
+        # Certificate details section
+        self.cert_details = QTextEdit()
+        self.cert_details.setReadOnly(True)
+        cert_splitter.addWidget(self.cert_details)
+        
+        return certificate_tab
+
+    def create_execution_tab(self):
+        """Create the workflow analysis tab"""
+        execution_tab = QWidget()
+        workflow_layout = QVBoxLayout()
+        execution_tab.setLayout(workflow_layout)
+        
+        # Add description label
+        workflow_description = QLabel("Analyze the MSI installation sequence to understand the actions and processes that will be performed, highlighting potentially high-impact operations. For detailed information about MSI execution sequence, see the Help tab.")
+        workflow_description.setWordWrap(True)
+        workflow_layout.addWidget(workflow_description)
+        
+        # Tree view for actions in sequence
+        self.sequence_tree = QTreeWidget()
+        self.sequence_tree.setColumnCount(5)
+        self.sequence_tree.setHeaderLabels(["Sequence", "Action", "Condition", "Type", "Impact"])
+        self.sequence_tree.setAlternatingRowColors(True)
+        self.sequence_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+        
+        # Enable context menu for sequence tree
+        self.sequence_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.sequence_tree.customContextMenuRequested.connect(self.show_sequence_context_menu)
+        
+        workflow_layout.addWidget(self.sequence_tree, 1)
+        
+        return execution_tab
+
+    def create_footprint_tab(self):
+        """Create the installation impact tab"""
+        footprint_tab = QWidget()
+        impact_layout = QVBoxLayout()
+        footprint_tab.setLayout(impact_layout)
+        
+        # Add description label
+        impact_description = QLabel("Analyze the MSI package to identify all system changes and artifacts that will be created during installation, including files, registry entries, services, and more.")
+        impact_description.setWordWrap(True)
+        impact_layout.addWidget(impact_description)
+        
+        # Tree view for installation impact details
+        self.impact_tree = QTreeWidget()
+        self.impact_tree.setColumnCount(4)
+        self.impact_tree.setHeaderLabels(["Type", "Entry", "Concern", "Details"])
+        self.impact_tree.setAlternatingRowColors(True)
+        self.impact_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+        
+        # Enable context menu for impact tree
+        self.impact_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.impact_tree.customContextMenuRequested.connect(self.show_impact_context_menu)
+        
+        impact_layout.addWidget(self.impact_tree, 1)
+        
+        return footprint_tab
+
+    def create_help_tab(self):
+        """Create the help tab"""
+        help_tab = QWidget()
+        help_layout = QVBoxLayout()
+        help_tab.setLayout(help_layout)
+        
+        # Add title and introduction
+        help_title = QLabel("MSI Parser Help & Documentation")
+        help_title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        help_layout.addWidget(help_title)
+        
+        help_intro = QLabel("This section provides comprehensive documentation about MSI files and their analysis. The information below will help you understand how MSI files work and how to interpret the results displayed in other tabs.")
+        help_intro.setWordWrap(True)
+        help_layout.addWidget(help_intro)
+        
+        # Add a small vertical spacer
+        help_layout.addSpacing(10)
+        
+        # Create text browser for help content
+        self.help_html = QTextBrowser()
+        self.help_html.setOpenExternalLinks(True)
+        help_layout.addWidget(self.help_html, 1)
+        
+        # Load the static workflow analysis documentation
+        display_workflow_analysis(self, target_widget='help')
+        
+        return help_tab 

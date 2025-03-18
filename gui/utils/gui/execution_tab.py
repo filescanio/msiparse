@@ -6,6 +6,7 @@ import os
 import markdown
 from PyQt5.QtWidgets import (QTreeWidgetItem, QApplication)
 from PyQt5.QtGui import QColor
+from PyQt5.QtCore import Qt
 
 # Define severity levels for highlighting
 SEVERITY_LEVELS = {
@@ -18,6 +19,36 @@ SEVERITY_LEVELS = {
     "CRITICAL": {"color": "darkred", "icon": "SP_MessageBoxCritical"}
 }
 
+# Phase boundaries for installation sequence
+phase_boundaries = {
+    "Initialization Phase": 1000,
+    "Validation Phase": 2000,
+    "Preparation Phase": 3000,
+    "Execution Phase": 4000,
+    "Commit Phase": 5000,
+    "Rollback Phase": 6000,
+    "Finalization Phase": float('inf')  # For any sequence numbers beyond other phases
+}
+
+# Colors for different phases
+phase_colors = {
+    "Initialization Phase": "#E3F2FD",  # Light Blue
+    "Validation Phase": "#F3E5F5",      # Light Purple
+    "Preparation Phase": "#E8F5E9",     # Light Green
+    "Execution Phase": "#FFF3E0",       # Light Orange
+    "Commit Phase": "#EFEBE9",          # Light Brown
+    "Rollback Phase": "#FFEBEE",        # Light Red
+    "Finalization Phase": "#F5F5F5"     # Light Gray
+}
+
+# Custom actions mapping
+custom_actions = {}  # Will be populated during analysis
+
+def clean_action_name(action_name):
+    """Clean action names by removing non-printable characters"""
+    # Replace any non-printable characters with empty string
+    return ''.join(char for char in action_name if char.isprintable())
+
 def display_workflow_analysis(parent, target_widget='workflow'):
     """Display the MSI Installation Workflow Analysis
     
@@ -25,103 +56,155 @@ def display_workflow_analysis(parent, target_widget='workflow'):
         parent: The parent window object
         target_widget: Which widget to display the content in ('workflow' or 'help')
     """
-    # Load the workflow markdown file
-    markdown_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
-                                "MSI_Installation_Workflow_Analysis.md")
-    
-    # Determine which widget to use
-    if target_widget == 'workflow':
-        display_widget = parent.workflow_html if hasattr(parent, 'workflow_html') else None
-    else:
-        display_widget = parent.help_html if hasattr(parent, 'help_html') else None
-    
-    # Check if the widget exists
-    if display_widget is None:
-        print(f"Warning: Target widget '{target_widget}' not found")
-        return
-    
-    if not os.path.exists(markdown_path):
-        display_widget.setHtml("<h1>MSI Workflow Analysis File Not Found</h1>"
-                                   "<p>The workflow analysis file could not be found. "
-                                   "Please make sure the file exists at:</p>"
-                                   f"<code>{markdown_path}</code>")
-        return
-    
     try:
-        with open(markdown_path, 'r') as f:
-            md_content = f.read()
+        # Clear existing items
+        if target_widget == 'workflow':
+            parent.sequence_tree.clear()
+        
+        # Get the InstallExecuteSequence table
+        if not parent.tables_data:
+            return
             
-        # Convert markdown to HTML
-        html_content = markdown.markdown(md_content, extensions=['tables', 'fenced_code'])
+        sequence_table = None
+        for table in parent.tables_data:
+            if table["name"] == "InstallExecuteSequence":
+                sequence_table = table
+                break
+                
+        if not sequence_table:
+            return
+            
+        # Create a list to store all phases
+        phases = []
+        current_phase = None
         
-        # Add some CSS styling
-        styled_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                margin: 20px;
-                line-height: 1.5;
-            }}
-            h1, h2, h3 {{
-                color: #2c3e50;
-            }}
-            h2 {{
-                border-bottom: 1px solid #eee;
-                padding-bottom: 5px;
-            }}
-            blockquote {{
-                background-color: #f6f8fa;
-                border-left: 4px solid #dfe2e5;
-                padding: 10px 15px;
-                margin: 15px 0;
-            }}
-            blockquote p {{
-                margin: 0;
-            }}
-            code {{
-                font-family: Consolas, monospace;
-                background-color: #f6f8fa;
-                padding: 2px 4px;
-                border-radius: 3px;
-            }}
-            strong {{
-                font-weight: bold;
-            }}
-            .security-note {{
-                background-color: #fff8dc;
-                border: 1px solid #ffeb99;
-                padding: 10px;
-                margin: 10px 0;
-                border-radius: 5px;
-            }}
-            .high-impact {{
-                color: red;
-                font-weight: bold;
-            }}
-            .medium-impact {{
-                color: darkorange;
-                font-weight: bold;
-            }}
-            .low-impact {{
-                color: blue;
-            }}
-        </style>
-        </head>
-        <body>
-        {html_content}
-        </body>
-        </html>
-        """
-        
-        # Set the HTML content
-        display_widget.setHtml(styled_html)
-        
-        # Make links clickable (for any external links in the markdown)
-        display_widget.setOpenExternalLinks(True)
-        
+        # Process each action in the sequence
+        for row in sequence_table.get("rows", []):
+            action = row.get("Action", "").strip()
+            sequence = row.get("Sequence", "")
+            condition = row.get("Condition", "").strip()
+            
+            # Clean the action name
+            action = clean_action_name(action)
+            
+            # Skip empty actions
+            if not action:
+                continue
+            
+            # Determine which phase this action belongs to
+            seq_num_int = int(sequence) if sequence.isdigit() else 0
+            
+            # Check if we need to add a new phase header
+            phase_name = "Finalization Phase"  # Default phase
+            for phase, boundary in phase_boundaries.items():
+                if seq_num_int < boundary:
+                    phase_name = phase
+                    break
+            
+            if phase_name != current_phase:
+                # Add a phase header
+                current_phase = phase_name
+                phase_color = phase_colors[phase_name]
+                
+                # Add blank spacer row before each new phase (except the first)
+                if phase_name != "Initialization Phase":
+                    spacer = QTreeWidgetItem(["", "", "", "", ""])
+                    parent.sequence_tree.addTopLevelItem(spacer)
+                
+                # Create phase header with the label in the first column
+                phase_header = QTreeWidgetItem([f"📋 {phase_name.upper()}", "", "", "", ""])
+                
+                # Set a slightly darker background color for the header
+                header_color = QColor(phase_color)
+                header_color.setAlpha(80)  # Make it more visible than regular rows
+                
+                for i in range(5):
+                    phase_header.setBackground(i, header_color)
+                
+                # Make the font bold and slightly larger
+                font = phase_header.font(0)
+                font.setBold(True)
+                font.setPointSize(font.pointSize() + 1)
+                phase_header.setFont(0, font)
+                
+                # Set text alignment to center
+                phase_header.setTextAlignment(0, Qt.AlignCenter)
+                
+                parent.sequence_tree.addTopLevelItem(phase_header)
+            
+            # Create a tree item
+            item = QTreeWidgetItem([sequence, action, condition, "", ""])
+            
+            # Add light background color based on the phase
+            light_color = QColor(phase_colors[current_phase])
+            light_color.setAlpha(40)  # Make it very light
+            for i in range(5):
+                item.setBackground(i, light_color)
+            
+            # Check if this is a custom action
+            if action in custom_actions:
+                # This is a custom action
+                ca_info = custom_actions[action]
+                ca_type = ca_info["Type"]
+                
+                # Add the custom action type
+                item.setText(3, ca_type)
+                
+                # Evaluate the impact based on the custom action type
+                impact, severity = evaluate_custom_action_impact(ca_type)
+                item.setText(4, f"{impact} (Custom Action!)")
+                
+                # Set text color based on severity
+                if severity in SEVERITY_LEVELS:
+                    item.setForeground(4, QColor(SEVERITY_LEVELS[severity]["color"]))
+                    # Add an icon if available
+                    if SEVERITY_LEVELS[severity]["icon"]:
+                        icon_name = SEVERITY_LEVELS[severity]["icon"]
+                        icon = QApplication.style().standardIcon(getattr(QApplication.style(), icon_name))
+                        item.setIcon(4, icon)
+                
+                # Highlight the entire row for high-impact custom actions
+                if severity in ["HIGH", "CRITICAL"]:
+                    for col in range(5):
+                        item.setBackground(col, QColor(255, 240, 240))  # Light red background
+                
+                # For suspicious targets, add warning indicator before the action name
+                if ca_info["Target"] and isinstance(ca_info["Target"], str):
+                    target_lower = ca_info["Target"].lower()
+                    
+                    # Look for suspicious commands or parameters
+                    suspicious_patterns = [
+                        "powershell", "cmd.exe", "http://", "https://", "ftp://", 
+                        "regsvr32", "rundll32", "wscript", "cscript", "certutil",
+                        "bitsadmin", "reg add", "reg delete", "regedit", "sc create"
+                    ]
+                    
+                    for pattern in suspicious_patterns:
+                        if pattern in target_lower:
+                            item.setText(1, f"[!] {action}")
+                            break
+            else:
+                # This is a standard action
+                impact, severity = evaluate_standard_action_impact(action)
+                item.setText(4, impact)
+                
+                # Set text color based on severity
+                if severity in SEVERITY_LEVELS:
+                    item.setForeground(4, QColor(SEVERITY_LEVELS[severity]["color"]))
+                    # Add an icon if available
+                    if SEVERITY_LEVELS[severity]["icon"]:
+                        icon_name = SEVERITY_LEVELS[severity]["icon"]
+                        icon = QApplication.style().standardIcon(getattr(QApplication.style(), icon_name))
+                        item.setIcon(4, icon)
+                
+                # Highlight the entire row for high-impact standard actions
+                if severity in ["HIGH", "CRITICAL"]:
+                    for col in range(5):
+                        item.setBackground(col, QColor(255, 240, 240))  # Light red background
+            
+            # Add the item to the tree as a top-level item
+            parent.sequence_tree.addTopLevelItem(item)
+    
     except Exception as e:
         parent.show_error("Error", f"Failed to load workflow analysis: {str(e)}")
 
@@ -229,24 +312,8 @@ def analyze_install_sequence(parent):
     # Sort the sequence by the Sequence number
     sorted_sequence = sorted(install_sequence["rows"], key=lambda x: int(x[2]) if x[2].isdigit() else 0)
     
-    # Define phase boundaries for different installation stages
-    phase_boundaries = {
-        "Initialization Phase": 900,
-        "Validation Phase": 1500,
-        "Execution Phase": 6000, 
-        "Finalization Phase": float('inf')
-    }
-    
     # Reference to track which phase we're in as we process items
     current_phase = None
-    
-    # Add headers for each phase
-    phase_colors = {
-        "Initialization Phase": QColor(240, 248, 255),  # Light blue
-        "Validation Phase": QColor(240, 255, 240),      # Light green
-        "Execution Phase": QColor(255, 248, 240),       # Light orange
-        "Finalization Phase": QColor(245, 245, 245)     # Light grey
-    }
     
     # Process each action in the sequence
     for row in sorted_sequence:
@@ -255,11 +322,18 @@ def analyze_install_sequence(parent):
             condition = row[1]
             sequence_num = row[2]
             
+            # Clean the action name
+            action_name = clean_action_name(action_name)
+            
+            # Skip empty actions
+            if not action_name:
+                continue
+            
             # Determine which phase this action belongs to
             seq_num_int = int(sequence_num) if sequence_num.isdigit() else 0
             
             # Check if we need to add a new phase header
-            phase_name = None
+            phase_name = "Finalization Phase"  # Default phase
             for phase, boundary in phase_boundaries.items():
                 if seq_num_int < boundary:
                     phase_name = phase
@@ -275,13 +349,25 @@ def analyze_install_sequence(parent):
                     spacer = QTreeWidgetItem(["", "", "", "", ""])
                     parent.sequence_tree.addTopLevelItem(spacer)
                 
-                phase_header = QTreeWidgetItem(["", f"📋 {phase_name.upper()}", "", "", ""])
-                for i in range(5):
-                    phase_header.setBackground(i, phase_color)
+                # Create phase header with the label in the first column
+                phase_header = QTreeWidgetItem([f"📋 {phase_name.upper()}", "", "", "", ""])
                 
+                # Set a slightly darker background color for the header
+                header_color = QColor(phase_color)
+                header_color.setAlpha(80)  # Make it more visible than regular rows
+                
+                for i in range(5):
+                    phase_header.setBackground(i, header_color)
+                
+                # Make the font bold and slightly larger
                 font = phase_header.font(0)
                 font.setBold(True)
-                phase_header.setFont(1, font)
+                font.setPointSize(font.pointSize() + 1)
+                phase_header.setFont(0, font)
+                
+                # Set text alignment to center
+                phase_header.setTextAlignment(0, Qt.AlignCenter)
+                
                 parent.sequence_tree.addTopLevelItem(phase_header)
             
             # Create a tree item
@@ -304,7 +390,7 @@ def analyze_install_sequence(parent):
                 
                 # Evaluate the impact based on the custom action type
                 impact, severity = evaluate_custom_action_impact(ca_type)
-                item.setText(4, impact)
+                item.setText(4, f"{impact} (Custom Action!)")
                 
                 # Set text color based on severity
                 if severity in SEVERITY_LEVELS:
@@ -315,15 +401,12 @@ def analyze_install_sequence(parent):
                         icon = QApplication.style().standardIcon(getattr(QApplication.style(), icon_name))
                         item.setIcon(4, icon)
                 
-                # For custom actions, add details prefix to the action name
-                item.setText(1, f"{action_name} 🔧")
-                
                 # Highlight the entire row for high-impact custom actions
                 if severity in ["HIGH", "CRITICAL"]:
                     for col in range(5):
                         item.setBackground(col, QColor(255, 240, 240))  # Light red background
                 
-                # For suspicious targets, append a warning indicator
+                # For suspicious targets, add warning indicator before the action name
                 if ca_info["Target"] and isinstance(ca_info["Target"], str):
                     target_lower = ca_info["Target"].lower()
                     
@@ -336,7 +419,7 @@ def analyze_install_sequence(parent):
                     
                     for pattern in suspicious_patterns:
                         if pattern in target_lower:
-                            item.setText(1, f"{action_name} 🔧 ⚠️")
+                            item.setText(1, f"[!] {action_name}")
                             break
             else:
                 # This is a standard action
@@ -360,47 +443,7 @@ def analyze_install_sequence(parent):
             # Add the item to the tree as a top-level item
             parent.sequence_tree.addTopLevelItem(item)
     
-    # Add registry operations for persistence directly in the tree
-    persistence_mechanisms = 0
-    for reg_op in registry_operations:
-        if reg_op["IsPersistence"]:
-            persistence_mechanisms += 1
-            
-    if persistence_mechanisms > 0:
-        # Add a spacer
-        spacer = QTreeWidgetItem(["", "", "", "", ""])
-        parent.sequence_tree.addTopLevelItem(spacer)
-        
-        # Add a header
-        registry_header = QTreeWidgetItem(["", "🔐 PERSISTENCE MECHANISMS", "", "", ""])
-        registry_header.setBackground(0, QColor(255, 245, 240))  # Light amber
-        registry_header.setBackground(1, QColor(255, 245, 240))
-        registry_header.setBackground(2, QColor(255, 245, 240))
-        registry_header.setBackground(3, QColor(255, 245, 240))
-        registry_header.setBackground(4, QColor(255, 245, 240))
-        font = registry_header.font(0)
-        font.setBold(True)
-        registry_header.setFont(1, font)
-        parent.sequence_tree.addTopLevelItem(registry_header)
-        
-        # Add items for each persistence registry key
-        for reg_op in registry_operations:
-            if reg_op["IsPersistence"]:
-                root_name = {
-                    "0": "HKCR", "1": "HKCU", "2": "HKLM", "3": "HKU", "4": "HKCC"
-                }.get(reg_op["Root"], f"Unknown ({reg_op['Root']})")
-                
-                reg_item = QTreeWidgetItem(["", f"Registry: {root_name}\\{reg_op['Key']}", reg_op["Name"], "", reg_op["Value"]])
-                reg_item.setForeground(4, QColor("red"))
-                
-                # Red background for persistence items
-                light_red = QColor(255, 240, 240)
-                for i in range(5):
-                    reg_item.setBackground(i, light_red)
-                
-                parent.sequence_tree.addTopLevelItem(reg_item)
-    
-    # Add service installations to the tree if present
+    # Add system services installations directly in the tree (keep this part)
     system_services = 0
     for service in service_installs:
         if service["IsCritical"]:
@@ -412,7 +455,7 @@ def analyze_install_sequence(parent):
         parent.sequence_tree.addTopLevelItem(spacer)
         
         # Add a header
-        services_header = QTreeWidgetItem(["", "⚙️ SYSTEM SERVICES", "", "", ""])
+        services_header = QTreeWidgetItem(["⚙️ SYSTEM SERVICES", "", "", "", ""])
         services_header.setBackground(0, QColor(240, 240, 255))  # Light purple
         services_header.setBackground(1, QColor(240, 240, 255))
         services_header.setBackground(2, QColor(240, 240, 255))
@@ -420,7 +463,7 @@ def analyze_install_sequence(parent):
         services_header.setBackground(4, QColor(240, 240, 255))
         font = services_header.font(0)
         font.setBold(True)
-        services_header.setFont(1, font)
+        services_header.setFont(0, font)
         parent.sequence_tree.addTopLevelItem(services_header)
         
         # Add items for each service

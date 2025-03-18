@@ -86,6 +86,10 @@ def display_tables(parent, output):
         # Apply hide empty tables filter if checked
         filter_tables(parent)
         
+        # Automatically run the workflow and impact analyses
+        parent.analyze_install_sequence()
+        parent.analyze_installation_impact()
+        
     except json.JSONDecodeError:
         parent.handle_error("Parse Error", "Error parsing tables output", show_dialog=True)
         
