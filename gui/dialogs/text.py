@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import QTextEdit
 from dialogs.base import BasePreviewDialog
 
 class TextPreviewDialog(BasePreviewDialog):
-    """Dialog for displaying text preview"""
+    """Dialog for displaying text content in a read-only format with line wrapping"""
     def __init__(self, parent, stream_name, content):
         # Create text edit widget
         self.text_edit = QTextEdit()

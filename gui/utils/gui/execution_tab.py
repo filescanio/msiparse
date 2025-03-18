@@ -2,8 +2,6 @@
 MSI Workflow Analysis tab functionality for the MSI Parser GUI
 """
 
-import os
-import markdown
 from PyQt5.QtWidgets import (QTreeWidgetItem, QApplication)
 from PyQt5.QtGui import QColor
 from PyQt5.QtCore import Qt
@@ -20,7 +18,7 @@ SEVERITY_LEVELS = {
 }
 
 # Phase boundaries for installation sequence
-phase_boundaries = {
+PHASE_BOUNDARIES = {
     "Initialization Phase": 1000,
     "Validation Phase": 2000,
     "Preparation Phase": 3000,
@@ -31,7 +29,7 @@ phase_boundaries = {
 }
 
 # Colors for different phases
-phase_colors = {
+PHASE_COLORS = {
     "Initialization Phase": "#E3F2FD",  # Light Blue
     "Validation Phase": "#F3E5F5",      # Light Purple
     "Preparation Phase": "#E8F5E9",     # Light Green
@@ -49,6 +47,46 @@ def clean_action_name(action_name):
     # Replace any non-printable characters with empty string
     return ''.join(char for char in action_name if char.isprintable())
 
+def create_phase_header(phase_name, parent):
+    if phase_name != "Initialization Phase":
+        spacer = QTreeWidgetItem(["", "", "", "", ""])
+        parent.sequence_tree.addTopLevelItem(spacer)
+    
+    header = QTreeWidgetItem([f"📋 {phase_name.upper()}", "", "", "", ""])
+    header_color = QColor(PHASE_COLORS[phase_name])
+    header_color.setAlpha(80)
+    
+    for i in range(5):
+        header.setBackground(i, header_color)
+    
+    font = header.font(0)
+    font.setBold(True)
+    font.setPointSize(font.pointSize() + 1)
+    header.setFont(0, font)
+    header.setTextAlignment(0, Qt.AlignCenter)
+    
+    parent.sequence_tree.addTopLevelItem(header)
+
+def create_sequence_item(sequence, action, condition, impact, severity, phase_name, parent):
+    item = QTreeWidgetItem([sequence, action, condition, "", impact])
+    
+    light_color = QColor(PHASE_COLORS[phase_name])
+    light_color.setAlpha(40)
+    for i in range(5):
+        item.setBackground(i, light_color)
+    
+    if severity in SEVERITY_LEVELS:
+        item.setForeground(4, QColor(SEVERITY_LEVELS[severity]["color"]))
+        if SEVERITY_LEVELS[severity]["icon"]:
+            icon = QApplication.style().standardIcon(getattr(QApplication.style(), SEVERITY_LEVELS[severity]["icon"]))
+            item.setIcon(4, icon)
+    
+    if severity in ["HIGH", "CRITICAL"]:
+        for col in range(5):
+            item.setBackground(col, QColor(255, 240, 240))
+    
+    parent.sequence_tree.addTopLevelItem(item)
+
 def display_workflow_analysis(parent, target_widget='workflow'):
     """Display the MSI Installation Workflow Analysis
     
@@ -65,27 +103,17 @@ def display_workflow_analysis(parent, target_widget='workflow'):
         if not parent.tables_data:
             return
             
-        sequence_table = None
-        for table in parent.tables_data:
-            if table["name"] == "InstallExecuteSequence":
-                sequence_table = table
-                break
-                
+        sequence_table = next((table for table in parent.tables_data if table["name"] == "InstallExecuteSequence"), None)
         if not sequence_table:
             return
             
-        # Create a list to store all phases
-        phases = []
         current_phase = None
         
         # Process each action in the sequence
         for row in sequence_table.get("rows", []):
-            action = row.get("Action", "").strip()
+            action = clean_action_name(row.get("Action", "").strip())
             sequence = row.get("Sequence", "")
             condition = row.get("Condition", "").strip()
-            
-            # Clean the action name
-            action = clean_action_name(action)
             
             # Skip empty actions
             if not action:
@@ -95,115 +123,16 @@ def display_workflow_analysis(parent, target_widget='workflow'):
             seq_num_int = int(sequence) if sequence.isdigit() else 0
             
             # Check if we need to add a new phase header
-            phase_name = "Finalization Phase"  # Default phase
-            for phase, boundary in phase_boundaries.items():
-                if seq_num_int < boundary:
-                    phase_name = phase
-                    break
+            phase_name = next((phase for phase, boundary in PHASE_BOUNDARIES.items() if seq_num_int < boundary), "Finalization Phase")
             
             if phase_name != current_phase:
                 # Add a phase header
                 current_phase = phase_name
-                phase_color = phase_colors[phase_name]
-                
-                # Add blank spacer row before each new phase (except the first)
-                if phase_name != "Initialization Phase":
-                    spacer = QTreeWidgetItem(["", "", "", "", ""])
-                    parent.sequence_tree.addTopLevelItem(spacer)
-                
-                # Create phase header with the label in the first column
-                phase_header = QTreeWidgetItem([f"📋 {phase_name.upper()}", "", "", "", ""])
-                
-                # Set a slightly darker background color for the header
-                header_color = QColor(phase_color)
-                header_color.setAlpha(80)  # Make it more visible than regular rows
-                
-                for i in range(5):
-                    phase_header.setBackground(i, header_color)
-                
-                # Make the font bold and slightly larger
-                font = phase_header.font(0)
-                font.setBold(True)
-                font.setPointSize(font.pointSize() + 1)
-                phase_header.setFont(0, font)
-                
-                # Set text alignment to center
-                phase_header.setTextAlignment(0, Qt.AlignCenter)
-                
-                parent.sequence_tree.addTopLevelItem(phase_header)
+                create_phase_header(phase_name, parent)
             
-            # Create a tree item
-            item = QTreeWidgetItem([sequence, action, condition, "", ""])
-            
-            # Add light background color based on the phase
-            light_color = QColor(phase_colors[current_phase])
-            light_color.setAlpha(40)  # Make it very light
-            for i in range(5):
-                item.setBackground(i, light_color)
-            
-            # Check if this is a custom action
-            if action in custom_actions:
-                # This is a custom action
-                ca_info = custom_actions[action]
-                ca_type = ca_info["Type"]
-                
-                # Add the custom action type
-                item.setText(3, ca_type)
-                
-                # Evaluate the impact based on the custom action type
-                impact, severity = evaluate_custom_action_impact(ca_type)
-                item.setText(4, f"{impact} (Custom Action!)")
-                
-                # Set text color based on severity
-                if severity in SEVERITY_LEVELS:
-                    item.setForeground(4, QColor(SEVERITY_LEVELS[severity]["color"]))
-                    # Add an icon if available
-                    if SEVERITY_LEVELS[severity]["icon"]:
-                        icon_name = SEVERITY_LEVELS[severity]["icon"]
-                        icon = QApplication.style().standardIcon(getattr(QApplication.style(), icon_name))
-                        item.setIcon(4, icon)
-                
-                # Highlight the entire row for high-impact custom actions
-                if severity in ["HIGH", "CRITICAL"]:
-                    for col in range(5):
-                        item.setBackground(col, QColor(255, 240, 240))  # Light red background
-                
-                # For suspicious targets, add warning indicator before the action name
-                if ca_info["Target"] and isinstance(ca_info["Target"], str):
-                    target_lower = ca_info["Target"].lower()
-                    
-                    # Look for suspicious commands or parameters
-                    suspicious_patterns = [
-                        "powershell", "cmd.exe", "http://", "https://", "ftp://", 
-                        "regsvr32", "rundll32", "wscript", "cscript", "certutil",
-                        "bitsadmin", "reg add", "reg delete", "regedit", "sc create"
-                    ]
-                    
-                    for pattern in suspicious_patterns:
-                        if pattern in target_lower:
-                            item.setText(1, f"[!] {action}")
-                            break
-            else:
-                # This is a standard action
-                impact, severity = evaluate_standard_action_impact(action)
-                item.setText(4, impact)
-                
-                # Set text color based on severity
-                if severity in SEVERITY_LEVELS:
-                    item.setForeground(4, QColor(SEVERITY_LEVELS[severity]["color"]))
-                    # Add an icon if available
-                    if SEVERITY_LEVELS[severity]["icon"]:
-                        icon_name = SEVERITY_LEVELS[severity]["icon"]
-                        icon = QApplication.style().standardIcon(getattr(QApplication.style(), icon_name))
-                        item.setIcon(4, icon)
-                
-                # Highlight the entire row for high-impact standard actions
-                if severity in ["HIGH", "CRITICAL"]:
-                    for col in range(5):
-                        item.setBackground(col, QColor(255, 240, 240))  # Light red background
-            
-            # Add the item to the tree as a top-level item
-            parent.sequence_tree.addTopLevelItem(item)
+            # Evaluate the impact of the action
+            impact, severity = evaluate_action_impact(action)
+            create_sequence_item(sequence, action, condition, impact, severity, current_phase, parent)
     
     except Exception as e:
         parent.show_error("Error", f"Failed to load workflow analysis: {str(e)}")
@@ -215,25 +144,8 @@ def analyze_install_sequence(parent):
         return
     
     # Find the key tables
-    install_sequence = None
-    custom_action_table = None
-    registry_table = None
-    file_table = None
-    service_install_table = None
-    
-    for table in parent.tables_data:
-        if table["name"] == "InstallExecuteSequence":
-            install_sequence = table
-        elif table["name"] == "CustomAction":
-            custom_action_table = table
-        elif table["name"] == "Registry":
-            registry_table = table
-        elif table["name"] == "File":
-            file_table = table
-        elif table["name"] == "ServiceInstall":
-            service_install_table = table
-    
-    if not install_sequence:
+    sequence_table = next((table for table in parent.tables_data if table["name"] == "InstallExecuteSequence"), None)
+    if not sequence_table:
         parent.show_warning("Warning", "InstallExecuteSequence table not found in this MSI.")
         return
     
@@ -243,10 +155,13 @@ def analyze_install_sequence(parent):
     # Set up the headers
     parent.sequence_tree.setHeaderLabels(["Sequence", "Action", "Condition", "Type", "Impact"])
     
+    # Initialize current phase
+    current_phase = None
+    
     # Create a dictionary of custom actions for quick lookup
     custom_actions = {}
-    if custom_action_table:
-        for row in custom_action_table["rows"]:
+    if any(table["name"] == "CustomAction" for table in parent.tables_data):
+        for row in next((table["rows"] for table in parent.tables_data if table["name"] == "CustomAction"), []):
             if len(row) >= 2:  # Ensure we have at least Action and Type
                 action_name = row[0]
                 action_type = row[1] if len(row) > 1 else ""
@@ -260,8 +175,8 @@ def analyze_install_sequence(parent):
     
     # Collect registry operations for analysis
     registry_operations = []
-    if registry_table:
-        for row in registry_table["rows"]:
+    if any(table["name"] == "Registry" for table in parent.tables_data):
+        for row in next((table["rows"] for table in parent.tables_data if table["name"] == "Registry"), []):
             if len(row) >= 5:  # Registry, Root, Key, Name, Value
                 registry_key = row[0]
                 root = row[1]
@@ -290,8 +205,8 @@ def analyze_install_sequence(parent):
     
     # Check for service installations
     service_installs = []
-    if service_install_table:
-        for row in service_install_table["rows"]:
+    if any(table["name"] == "ServiceInstall" for table in parent.tables_data):
+        for row in next((table["rows"] for table in parent.tables_data if table["name"] == "ServiceInstall"), []):
             if len(row) >= 4:  # Basic service information
                 service_name = row[1] if len(row) > 1 else ""
                 display_name = row[2] if len(row) > 2 else ""
@@ -310,10 +225,7 @@ def analyze_install_sequence(parent):
                 })
     
     # Sort the sequence by the Sequence number
-    sorted_sequence = sorted(install_sequence["rows"], key=lambda x: int(x[2]) if x[2].isdigit() else 0)
-    
-    # Reference to track which phase we're in as we process items
-    current_phase = None
+    sorted_sequence = sorted(sequence_table["rows"], key=lambda x: int(x[2]) if x[2].isdigit() else 0)
     
     # Process each action in the sequence
     for row in sorted_sequence:
@@ -333,122 +245,20 @@ def analyze_install_sequence(parent):
             seq_num_int = int(sequence_num) if sequence_num.isdigit() else 0
             
             # Check if we need to add a new phase header
-            phase_name = "Finalization Phase"  # Default phase
-            for phase, boundary in phase_boundaries.items():
-                if seq_num_int < boundary:
-                    phase_name = phase
-                    break
+            phase_name = next((phase for phase, boundary in PHASE_BOUNDARIES.items() if seq_num_int < boundary), "Finalization Phase")
             
             if phase_name != current_phase:
                 # Add a phase header
                 current_phase = phase_name
-                phase_color = phase_colors[phase_name]
-                
-                # Add blank spacer row before each new phase (except the first)
-                if phase_name != "Initialization Phase":
-                    spacer = QTreeWidgetItem(["", "", "", "", ""])
-                    parent.sequence_tree.addTopLevelItem(spacer)
-                
-                # Create phase header with the label in the first column
-                phase_header = QTreeWidgetItem([f"📋 {phase_name.upper()}", "", "", "", ""])
-                
-                # Set a slightly darker background color for the header
-                header_color = QColor(phase_color)
-                header_color.setAlpha(80)  # Make it more visible than regular rows
-                
-                for i in range(5):
-                    phase_header.setBackground(i, header_color)
-                
-                # Make the font bold and slightly larger
-                font = phase_header.font(0)
-                font.setBold(True)
-                font.setPointSize(font.pointSize() + 1)
-                phase_header.setFont(0, font)
-                
-                # Set text alignment to center
-                phase_header.setTextAlignment(0, Qt.AlignCenter)
-                
-                parent.sequence_tree.addTopLevelItem(phase_header)
+                create_phase_header(phase_name, parent)
             
-            # Create a tree item
-            item = QTreeWidgetItem([sequence_num, action_name, condition, "", ""])
-            
-            # Add light background color based on the phase
-            light_color = QColor(phase_colors[current_phase])
-            light_color.setAlpha(40)  # Make it very light
-            for i in range(5):
-                item.setBackground(i, light_color)
-            
-            # Check if this is a custom action
-            if action_name in custom_actions:
-                # This is a custom action
-                ca_info = custom_actions[action_name]
-                ca_type = ca_info["Type"]
-                
-                # Add the custom action type
-                item.setText(3, ca_type)
-                
-                # Evaluate the impact based on the custom action type
-                impact, severity = evaluate_custom_action_impact(ca_type)
-                item.setText(4, f"{impact} (Custom Action!)")
-                
-                # Set text color based on severity
-                if severity in SEVERITY_LEVELS:
-                    item.setForeground(4, QColor(SEVERITY_LEVELS[severity]["color"]))
-                    # Add an icon if available
-                    if SEVERITY_LEVELS[severity]["icon"]:
-                        icon_name = SEVERITY_LEVELS[severity]["icon"]
-                        icon = QApplication.style().standardIcon(getattr(QApplication.style(), icon_name))
-                        item.setIcon(4, icon)
-                
-                # Highlight the entire row for high-impact custom actions
-                if severity in ["HIGH", "CRITICAL"]:
-                    for col in range(5):
-                        item.setBackground(col, QColor(255, 240, 240))  # Light red background
-                
-                # For suspicious targets, add warning indicator before the action name
-                if ca_info["Target"] and isinstance(ca_info["Target"], str):
-                    target_lower = ca_info["Target"].lower()
-                    
-                    # Look for suspicious commands or parameters
-                    suspicious_patterns = [
-                        "powershell", "cmd.exe", "http://", "https://", "ftp://", 
-                        "regsvr32", "rundll32", "wscript", "cscript", "certutil",
-                        "bitsadmin", "reg add", "reg delete", "regedit", "sc create"
-                    ]
-                    
-                    for pattern in suspicious_patterns:
-                        if pattern in target_lower:
-                            item.setText(1, f"[!] {action_name}")
-                            break
-            else:
-                # This is a standard action
-                impact, severity = evaluate_standard_action_impact(action_name)
-                item.setText(4, impact)
-                
-                # Set text color based on severity
-                if severity in SEVERITY_LEVELS:
-                    item.setForeground(4, QColor(SEVERITY_LEVELS[severity]["color"]))
-                    # Add an icon if available
-                    if SEVERITY_LEVELS[severity]["icon"]:
-                        icon_name = SEVERITY_LEVELS[severity]["icon"]
-                        icon = QApplication.style().standardIcon(getattr(QApplication.style(), icon_name))
-                        item.setIcon(4, icon)
-                
-                # Highlight the entire row for high-impact standard actions
-                if severity in ["HIGH", "CRITICAL"]:
-                    for col in range(5):
-                        item.setBackground(col, QColor(255, 240, 240))  # Light red background
-            
-            # Add the item to the tree as a top-level item
-            parent.sequence_tree.addTopLevelItem(item)
+            # Evaluate the impact of the action
+            impact, severity = evaluate_action_impact(action_name)
+            create_sequence_item(sequence_num, action_name, condition, impact, severity, current_phase, parent)
     
-    # Add system services installations directly in the tree (keep this part)
-    system_services = 0
-    for service in service_installs:
-        if service["IsCritical"]:
-            system_services += 1
-            
+    # Add system services installations directly in the tree
+    system_services = sum(1 for service in service_installs if service["IsCritical"])
+    
     if system_services > 0:
         # Add a spacer
         spacer = QTreeWidgetItem(["", "", "", "", ""])
@@ -487,7 +297,7 @@ def analyze_install_sequence(parent):
     parent.show_status(f"Analyzed InstallExecuteSequence: {total_actions} actions")
 
 def evaluate_custom_action_impact(ca_type):
-    """Evaluate the impact of a custom action based on its type"""
+    """Evaluate the impact of a custom action based on its type (backward compatibility)"""
     try:
         ca_type_int = int(ca_type)
         
@@ -635,17 +445,34 @@ def evaluate_custom_action_impact(ca_type):
         return "Unknown custom action", "LOW"
 
 def evaluate_standard_action_impact(action_name):
-    """Evaluate the impact of a standard action based on its name"""
-    # High impact actions - genuinely risky operations that modify system state significantly
-    high_impact_actions = {
+    """Evaluate the impact of a standard action based on its name (backward compatibility)"""
+    return evaluate_action_impact(action_name)
+
+def evaluate_action_impact(action):
+    if action.startswith("_") and len(action) > 30 and any(c.isdigit() for c in action):
+        return "Custom action with generated name", "MEDIUM"
+    
+    if action.startswith("DIRCA_"):
+        return "Directory customization action", "LOW"
+    if action.startswith("ERRCA_"):
+        return "Error handling action", "LOW"
+    if action.startswith("AI_"):
+        if "DETECT" in action or "CHECK" in action:
+            return "Advanced Installer detection action", "LOW"
+        if "SET" in action or "WRITE" in action:
+            return "Advanced Installer property setting", "MEDIUM"
+        if "INSTALL" in action or "EXECUTE" in action:
+            return "Advanced Installer execution action", "MEDIUM"
+        return "Advanced Installer custom action", "MEDIUM"
+    
+    high_impact = {
         "RemoveExistingProducts": "Removes existing products",
         "RegisterServices": "Installs services",
         "StartServices": "Starts services",
         "DeleteServices": "Removes services from system"
     }
     
-    # Medium-high impact actions - significant system changes but standard during installations
-    medium_high_actions = {
+    medium_high = {
         "InstallFiles": "Copies files to system",
         "WriteRegistryValues": "Modifies registry",
         "RemoveRegistryValues": "Removes registry entries",
@@ -655,8 +482,7 @@ def evaluate_standard_action_impact(action_name):
         "SelfRegModules": "Self-registers modules"
     }
     
-    # Medium impact actions - system modifications within expected ranges
-    medium_impact_actions = {
+    medium = {
         "CreateShortcuts": "Creates shortcuts",
         "RegisterClassInfo": "Registers COM classes",
         "RegisterExtensionInfo": "Registers file extensions",
@@ -671,8 +497,7 @@ def evaluate_standard_action_impact(action_name):
         "AllocateRegistrySpace": "Reserves registry space"
     }
     
-    # Low-medium impact actions - minor system changes
-    low_medium_actions = {
+    low_medium = {
         "PublishFeatures": "Publishes features",
         "PublishProduct": "Publishes product info",
         "WriteIniValues": "Writes INI values",
@@ -691,8 +516,7 @@ def evaluate_standard_action_impact(action_name):
         "ProcessComponents": "Processes component registrations"
     }
     
-    # Low impact actions - minimal system changes
-    low_impact_actions = {
+    low = {
         "RegisterUser": "Registers user info",
         "RegisterProduct": "Registers product",
         "RegisterFonts": "Registers fonts",
@@ -708,16 +532,7 @@ def evaluate_standard_action_impact(action_name):
         "MsiUnpublishAssemblies": "Unpublishes .NET assemblies"
     }
     
-    # Transaction control actions - fundamental installation operations
-    transaction_actions = {
-        "InstallInitialize": "Begins installation transaction",
-        "InstallFinalize": "Commits changes to system",
-        "InstallExecute": "Executes installation script",
-        "StopServices": "Stops services during update"
-    }
-    
-    # No impact actions (information only)
-    no_impact_actions = {
+    no_impact = {
         "CostInitialize": "Initializes costing",
         "FileCost": "Calculates disk space",
         "CostFinalize": "Finalizes cost calculation",
@@ -730,51 +545,19 @@ def evaluate_standard_action_impact(action_name):
         "ValidateProductID": "Validates product ID"
     }
     
-    # Critical impact (special attention)
-    critical_impact_actions = {
-        "ExecuteAction": "Triggers Execute Sequence"
-    }
+    if action in high_impact:
+        return high_impact[action], "HIGH"
+    if action in medium_high:
+        return medium_high[action], "MEDIUM-HIGH"
+    if action in medium:
+        return medium[action], "MEDIUM"
+    if action in low_medium:
+        return low_medium[action], "LOW-MEDIUM"
+    if action in low:
+        return low[action], "LOW"
+    if action in no_impact:
+        return no_impact[action], "NONE"
+    if action == "ExecuteAction":
+        return "Triggers Execute Sequence", "CRITICAL"
     
-    # Special handling for known patterns of custom actions
-    # Use more precise patterns to avoid false positives
-    if action_name.startswith("_") and len(action_name) > 30 and any(c.isdigit() for c in action_name):
-        # More specifically identify GUID-like patterns
-        if action_name.count("_") > 3 or action_name.count("-") > 0:
-            return "Custom action with GUID identifier", "MEDIUM"
-        return "Custom action with generated name", "MEDIUM"
-    elif action_name.startswith("DIRCA_"):
-        # Directory customization actions are generally for directory settings
-        return "Directory customization action", "LOW"
-    elif action_name.startswith("ERRCA_"):
-        # Error handling actions are informational
-        return "Error handling action", "LOW"
-    elif action_name.startswith("AI_"):
-        # Analyze the AI_ action more specifically
-        if "DETECT" in action_name or "CHECK" in action_name:
-            return "Advanced Installer detection action", "LOW"
-        elif "SET" in action_name or "WRITE" in action_name:
-            return "Advanced Installer property setting", "MEDIUM"
-        elif "INSTALL" in action_name or "EXECUTE" in action_name:
-            return "Advanced Installer execution action", "MEDIUM"
-        return "Advanced Installer custom action", "MEDIUM"
-    
-    # Return appropriate impact level based on action category
-    if action_name in high_impact_actions:
-        return high_impact_actions[action_name], "HIGH"
-    elif action_name in medium_high_actions:
-        return medium_high_actions[action_name], "MEDIUM-HIGH"
-    elif action_name in medium_impact_actions:
-        return medium_impact_actions[action_name], "MEDIUM"
-    elif action_name in low_medium_actions:
-        return low_medium_actions[action_name], "LOW-MEDIUM"
-    elif action_name in low_impact_actions:
-        return low_impact_actions[action_name], "LOW"
-    elif action_name in transaction_actions:
-        return transaction_actions[action_name], "MEDIUM"
-    elif action_name in no_impact_actions:
-        return no_impact_actions[action_name], "NONE"
-    elif action_name in critical_impact_actions:
-        return critical_impact_actions[action_name], "CRITICAL"
-    else:
-        # For unknown actions, assume a safer default
-        return "Standard MSI action", "LOW" 
+    return "Standard MSI action", "LOW" 

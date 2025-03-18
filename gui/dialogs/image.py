@@ -26,43 +26,21 @@ class ImagePreviewDialog(BasePreviewDialog):
             image = QImage(image_path)
             if image.isNull():
                 self.image_label.setText("Failed to load image")
-                self.set_status("Error: Invalid or unsupported image format")
+                self.set_status("Error: Invalid image")
                 return
                 
-            width = image.width()
-            height = image.height()
-            pixmap = QPixmap.fromImage(image)
-            self.image_label.setPixmap(pixmap)
-            
-            format_name = self.get_format_name(image.format())
-            depth = image.depth()
-            self.set_status(f"Format: {format_name} | Size: {width}x{height} | Depth: {depth} bits")
+            self.image_label.setPixmap(QPixmap.fromImage(image))
+            self.set_status(f"{self.get_format_name(image.format())} | {image.width()}x{image.height()} | {image.depth()}b")
             
         except Exception as e:
-            self.image_label.setText(f"Error loading image: {str(e)}")
-            self.set_status("Error occurred while loading the image")
+            self.image_label.setText(f"Error: {str(e)}")
+            self.set_status("Failed to load image")
             
     def get_format_name(self, format_id):
-        """Convert QImage format ID to a readable name"""
-        format_names = {
-            QImage.Format_Invalid: "Invalid",
-            QImage.Format_Mono: "Mono",
-            QImage.Format_MonoLSB: "MonoLSB",
-            QImage.Format_Indexed8: "Indexed8",
+        formats = {
             QImage.Format_RGB32: "RGB32",
             QImage.Format_ARGB32: "ARGB32",
-            QImage.Format_ARGB32_Premultiplied: "ARGB32_Premultiplied",
-            QImage.Format_RGB16: "RGB16",
-            QImage.Format_ARGB8565_Premultiplied: "ARGB8565_Premultiplied",
-            QImage.Format_RGB666: "RGB666",
-            QImage.Format_ARGB6666_Premultiplied: "ARGB6666_Premultiplied",
-            QImage.Format_RGB555: "RGB555",
-            QImage.Format_ARGB8555_Premultiplied: "ARGB8555_Premultiplied",
             QImage.Format_RGB888: "RGB888",
-            QImage.Format_RGB444: "RGB444",
-            QImage.Format_ARGB4444_Premultiplied: "ARGB4444_Premultiplied",
-            QImage.Format_RGBX8888: "RGBX8888",
-            QImage.Format_RGBA8888: "RGBA8888",
-            QImage.Format_RGBA8888_Premultiplied: "RGBA8888_Premultiplied"
+            QImage.Format_RGBA8888: "RGBA8888"
         }
-        return format_names.get(format_id, f"Unknown ({format_id})")
+        return formats.get(format_id, f"Format {format_id}")

@@ -3,6 +3,8 @@ Streams tab functionality for the MSI Parser GUI
 """
 
 import json
+import tempfile
+import shutil
 from PyQt5.QtWidgets import QTreeWidgetItem, QMenu, QAction
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -68,21 +70,22 @@ def identify_streams(parent):
     # Disable identify button while running
     parent.identify_streams_button.setEnabled(False)
     
+    # Create a temporary directory for stream extraction
+    temp_dir = tempfile.mkdtemp()
+    
     # Create and start the identification thread
     parent.identify_thread = IdentifyStreamsThread(
-        parent.msiparse_path,
-        parent.msi_file_path,
+        parent,
         parent.streams_data,
-        parent
+        temp_dir
     )
     parent.active_threads.append(parent.identify_thread)
     
     # Connect signals
     parent.identify_thread.progress_updated.connect(parent.update_identify_progress)
     parent.identify_thread.stream_identified.connect(parent.update_stream_file_type)
-    parent.identify_thread.finished_successfully.connect(parent.identify_streams_finished)
+    parent.identify_thread.finished.connect(parent.identify_streams_finished)
     parent.identify_thread.error_occurred.connect(lambda msg: parent.handle_error("Identification Error", msg))
-    parent.identify_thread.finished.connect(lambda: parent.cleanup_thread(parent.identify_thread))
     
     # Start the thread
     parent.identify_thread.start()
@@ -169,6 +172,13 @@ def identify_streams_finished(parent):
     """Called when stream identification is complete"""
     parent.progress_bar.setVisible(False)
     parent.identify_streams_button.setEnabled(True)
+    
+    # Clean up the temporary directory
+    if hasattr(parent.identify_thread, 'temp_dir'):
+        try:
+            shutil.rmtree(parent.identify_thread.temp_dir, ignore_errors=True)
+        except Exception as e:
+            parent.handle_error("Cleanup Error", f"Failed to clean up temporary directory: {str(e)}")
     
     # Get current filter text
     current_filter = parent.streams_filter.text().lower()

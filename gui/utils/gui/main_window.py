@@ -78,9 +78,7 @@ from utils.gui.extraction import (
     extract_all_streams,
     handle_extraction_all_complete,
     extract_stream,
-    extract_multiple_streams,
-    extract_next_stream,
-    get_output_directory
+    extract_multiple_streams
 )
 from utils.gui.preview import (
     show_preview,
@@ -114,12 +112,23 @@ class MSIParseGUI(QMainWindow):
         self.init_ui()
         
     def closeEvent(self, event):
-        """Clean up threads when the application is closing"""
-        # Stop all active threads
-        for thread in self.active_threads:
-            thread.stop()
-            thread.wait(100)  # Wait a bit for thread to finish
-            
+        """Handle application close event"""
+        # Stop any running threads
+        for thread in self.active_threads[:]:  # Create a copy of the list to avoid modification during iteration
+            try:
+                if hasattr(thread, 'cleanup'):
+                    # Ensure cleanup happens in the main thread
+                    thread.cleanup()
+                    thread.wait()  # Wait for the thread to finish
+                elif hasattr(thread, 'stop'):
+                    thread.stop()
+                    thread.wait()  # Wait for the thread to finish
+            except Exception as e:
+                print(f"Error cleaning up thread: {str(e)}")
+        
+        # Clear the active threads list
+        self.active_threads.clear()
+        
         # Accept the close event
         event.accept()
         
@@ -456,7 +465,8 @@ class MSIParseGUI(QMainWindow):
         
     def extract_stream_unified(self, stream_name, output_dir=None, temp=False, show_messages=True):
         """Extract a stream and return the path to the extracted file"""
-        return extract_stream_unified(self, stream_name, output_dir, temp, show_messages)
+        from utils.gui.extraction import extract_stream
+        return extract_stream(self, stream_name, output_dir, temp)
         
     def extract_file_to_temp(self, stream_name, temp_dir):
         return extract_file_to_temp(self, stream_name, temp_dir)
@@ -480,10 +490,22 @@ class MSIParseGUI(QMainWindow):
         return extract_multiple_streams(self, stream_names, output_dir)
         
     def extract_next_stream(self):
-        return extract_next_stream(self)
+        """Get the next stream to extract"""
+        if not self.streams_data:
+            return None
+        return self.streams_data[0] if self.streams_data else None
         
     def get_output_directory(self):
-        return get_output_directory(self)
+        """Get the output directory for file operations"""
+        if not self.output_dir:
+            self.output_dir = QFileDialog.getExistingDirectory(
+                self,
+                "Select Output Directory",
+                self.last_output_dir if self.last_output_dir else ""
+            )
+            if self.output_dir:
+                self.last_output_dir = self.output_dir
+        return self.output_dir
         
     def show_preview(self, stream_name, preview_func):
         return show_preview(self, stream_name, preview_func)

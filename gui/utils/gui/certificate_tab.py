@@ -49,41 +49,24 @@ def handle_certificate_extraction_complete(parent, output):
     """Handle completion of certificate extraction command"""
     parent.progress_bar.setVisible(False)
     
-    # Process the output
     if "MSI file has a digital signature" in output:
         parent.statusBar().showMessage("Digital signature found and saved successfully")
         
-        # Check for successful extraction messages
         if "Successfully extracted" in output:
-            # Parse the output to find extracted files
-            extracted_files = []
-            for line in output.split('\n'):
-                if "Successfully extracted" in line:
-                    # Extract the file path from the output
-                    parts = line.split(" to ")
-                    if len(parts) == 2:
-                        file_path = parts[1].strip()
-                        extracted_files.append(file_path)
+            extracted_files = [line.split(" to ")[1].strip() for line in output.split('\n') 
+                             if "Successfully extracted" in line and " to " in line]
             
-            # Store the extracted files for later analysis
             parent.extracted_cert_files = extracted_files
-            
-            # Show success message
             QMessageBox.information(
                 parent,
                 "Save Complete",
                 "Digital signatures have been saved successfully."
             )
-            
-            # Automatically analyze the certificate - show dialogs since user explicitly requested certificate extraction
-            parent.analyze_certificate(show_dialogs=True)
         else:
             parent.statusBar().showMessage("Signature found but extraction may have failed")
             parent.show_warning("Extraction Issue", "Signature found but extraction may have failed. Check the output directory.")
     elif "MSI file does not have a digital signature" in output:
         parent.statusBar().showMessage("No digital signature found in the MSI file")
-        
-        # Show info message
         QMessageBox.information(
             parent,
             "No Signature",
@@ -91,8 +74,6 @@ def handle_certificate_extraction_complete(parent, output):
         )
     else:
         parent.statusBar().showMessage("Unexpected output from certificate extraction")
-        
-        # Show warning
         parent.show_warning("Extraction Issue", "Unexpected output from certificate extraction. Check the log for details.")
         
 def analyze_certificate(parent, show_dialogs=False):
@@ -151,14 +132,8 @@ def analyze_certificate(parent, show_dialogs=False):
                     parent.statusBar().showMessage("Digital signature found, analyzing...")
                     
                     # Find extracted files
-                    extracted_files = []
-                    for line in output.split('\n'):
-                        if "Successfully extracted" in line:
-                            # Extract the file path from the output
-                            parts = line.split(" to ")
-                            if len(parts) == 2:
-                                file_path = parts[1].strip()
-                                extracted_files.append(file_path)
+                    extracted_files = [line.split(" to ")[1].strip() for line in output.split('\n') 
+                                     if "Successfully extracted" in line and " to " in line]
                     
                     # If no files were extracted, show warning and return
                     if not extracted_files:
@@ -209,11 +184,7 @@ def analyze_certificate(parent, show_dialogs=False):
 def _analyze_certificate_files(parent, certificate_files):
     """Internal method to analyze certificate files"""
     # Find the DigitalSignature file (main signature)
-    signature_file = None
-    for file_path in certificate_files:
-        if os.path.basename(file_path) == "DigitalSignature":
-            signature_file = file_path
-            break
+    signature_file = next((f for f in certificate_files if os.path.basename(f) == "DigitalSignature"), None)
             
     if not signature_file:
         parent.statusBar().showMessage("Missing DigitalSignature file")
@@ -237,10 +208,7 @@ def _analyze_certificate_files(parent, certificate_files):
         parent.cert_details.append("<b>Format:</b> DER Encoded PKCS#7 Signed Data")
         
         # Get digest algorithms
-        digest_algorithms = []
-        for digest_algo in signed_data['digest_algorithms']:
-            algo_name = digest_algo['algorithm'].native
-            digest_algorithms.append(algo_name)
+        digest_algorithms = [digest_algo['algorithm'].native for digest_algo in signed_data['digest_algorithms']]
         parent.cert_details.append(f"<b>Digest Algorithm:</b> {', '.join(digest_algorithms)}")
         
         # Use cryptography library for certificate analysis
@@ -370,21 +338,17 @@ def analyze_signer_info_simple(parent, signed_data):
             
 def get_name_as_text(parent, name):
     """Convert an X.509 name to a readable string"""
+    name_components = {
+        NameOID.COMMON_NAME: 'CN',
+        NameOID.ORGANIZATION_NAME: 'O',
+        NameOID.ORGANIZATIONAL_UNIT_NAME: 'OU',
+        NameOID.COUNTRY_NAME: 'C',
+        NameOID.STATE_OR_PROVINCE_NAME: 'ST',
+        NameOID.LOCALITY_NAME: 'L'
+    }
+    
     result = []
     for attr in name:
-        oid = attr.oid
-        if oid == NameOID.COMMON_NAME:
-            result.append(f"CN={attr.value}")
-        elif oid == NameOID.ORGANIZATION_NAME:
-            result.append(f"O={attr.value}")
-        elif oid == NameOID.ORGANIZATIONAL_UNIT_NAME:
-            result.append(f"OU={attr.value}")
-        elif oid == NameOID.COUNTRY_NAME:
-            result.append(f"C={attr.value}")
-        elif oid == NameOID.STATE_OR_PROVINCE_NAME:
-            result.append(f"ST={attr.value}")
-        elif oid == NameOID.LOCALITY_NAME:
-            result.append(f"L={attr.value}")
-        else:
-            result.append(f"{oid._name}={attr.value}")
+        prefix = name_components.get(attr.oid, attr.oid._name)
+        result.append(f"{prefix}={attr.value}")
     return ", ".join(result) 
