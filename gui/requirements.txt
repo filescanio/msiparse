@@ -7,4 +7,6 @@ magika>=0.5.1
 libarchive-c>=5.2.0
 # For certificate analysis
 cryptography>=42.0.0
-asn1crypto>=1.5.1 
+asn1crypto>=1.5.1
+# For markdown rendering in help tab
+markdown>=3.5.2 

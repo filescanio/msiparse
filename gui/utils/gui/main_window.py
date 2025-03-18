@@ -87,6 +87,7 @@ from utils.gui.preview import (
     show_image_preview,
     show_archive_preview
 )
+from utils.gui.help_tab import create_help_tab
 
 class MSIParseGUI(QMainWindow):
     def __init__(self, archive_support=True):
@@ -361,7 +362,8 @@ class MSIParseGUI(QMainWindow):
         try:
             webbrowser.open(url)
         except Exception as e:
-            self.show_error("Browser Error", f"Failed to open browser: {str(e)}")
+            QMessageBox.critical(self, "Browser Error", f"Failed to open browser: {str(e)}")
+            self.statusBar().showMessage("Failed to open browser")
 
     # Forward method calls to the appropriate modules
     def get_metadata(self):
@@ -546,12 +548,14 @@ class MSIParseGUI(QMainWindow):
         export_dir = QFileDialog.getExistingDirectory(
             self,
             "Select Directory for Table Exports",
-            os.path.expanduser("~")
+            self.last_output_dir if self.last_output_dir else ""
         )
         
         if not export_dir:
             return  # User cancelled
             
+        self.last_output_dir = export_dir  # Remember the last chosen directory
+        
         try:
             # Count for progress tracking
             total_tables = len(self.tables_data)
@@ -951,28 +955,4 @@ class MSIParseGUI(QMainWindow):
 
     def create_help_tab(self):
         """Create the help tab"""
-        help_tab = QWidget()
-        help_layout = QVBoxLayout()
-        help_tab.setLayout(help_layout)
-        
-        # Add title and introduction
-        help_title = QLabel("MSI Parser Help & Documentation")
-        help_title.setStyleSheet("font-size: 16px; font-weight: bold;")
-        help_layout.addWidget(help_title)
-        
-        help_intro = QLabel("This section provides comprehensive documentation about MSI files and their analysis. The information below will help you understand how MSI files work and how to interpret the results displayed in other tabs.")
-        help_intro.setWordWrap(True)
-        help_layout.addWidget(help_intro)
-        
-        # Add a small vertical spacer
-        help_layout.addSpacing(10)
-        
-        # Create text browser for help content
-        self.help_html = QTextBrowser()
-        self.help_html.setOpenExternalLinks(True)
-        help_layout.addWidget(self.help_html, 1)
-        
-        # Load the static workflow analysis documentation
-        display_workflow_analysis(self, target_widget='help')
-        
-        return help_tab 
+        return create_help_tab() 

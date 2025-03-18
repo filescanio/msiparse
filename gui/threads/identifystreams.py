@@ -68,7 +68,7 @@ class IdentifyStreamsWorker(QObject):
 
                     # Get file size
                     file_size = os.path.getsize(extracted_file)
-                    file_size_str = f"{file_size:,} bytes"
+                    file_size_str = format_file_size(file_size)
 
                     # Calculate SHA1 hash
                     sha1_hash = calculate_sha1(extracted_file)

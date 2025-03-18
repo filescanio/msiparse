@@ -6,9 +6,12 @@ from pathlib import Path
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
                            QTreeWidget, QMessageBox, QProgressBar,
                            QMenu, QAction, QFileDialog, QApplication, QLineEdit, QShortcut)
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread
 from PyQt5.QtGui import QKeySequence, QFont
 import magika
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from queue import Queue, Empty
+from threading import Lock
 
 # Import common utilities
 from utils.common import (format_file_size, calculate_sha1, TableHelper, TreeHelper, 
@@ -38,6 +41,11 @@ class ArchivePreviewDialog(QDialog):
         
         # Initialize magika
         self.magika_client = magika.Magika()
+        
+        # Initialize parallel processing components
+        self.result_queue = Queue()
+        self.ui_lock = Lock()
+        self.max_workers = min(32, os.cpu_count() * 4)  # Adjust based on system
             
         self.init_ui()
         self.load_archive_contents()
@@ -228,19 +236,75 @@ class ArchivePreviewDialog(QDialog):
             self.progress_bar.setVisible(False)
             QMessageBox.critical(self, "Error", f"Failed to read archive: {str(e)}")
         
+    def process_item(self, item):
+        """Process a single item in a worker thread"""
+        try:
+            file_path = self.extract_file(item)
+            if file_path:
+                file_path_obj = Path(file_path)
+                if file_path_obj.exists() and file_path_obj.is_file():
+                    group, mime_type = FileIdentificationHelper.identify_file_with_magika(file_path_obj, self.magika_client)
+                    size = format_file_size(os.path.getsize(file_path))
+                    sha1 = calculate_sha1(file_path)
+                    return (item, group, mime_type, size, sha1)
+        except Exception:
+            pass
+        return (item, "unknown", "application/octet-stream", "Unknown", "Error calculating hash")
+
+    def update_ui_from_queue(self):
+        """Update UI with results from the queue"""
+        try:
+            while True:
+                item, group, mime_type, size, sha1 = self.result_queue.get_nowait()
+                with self.ui_lock:
+                    self.update_item_with_file_info(item, group, mime_type, None, size, sha1)
+                self.result_queue.task_done()
+        except Empty:
+            pass
+
+    def collect_items(self, parent_item):
+        """Collect all items that need processing"""
+        items_to_process = []
+        for i in range(parent_item.childCount()):
+            child = parent_item.child(i)
+            if child.data(0, Qt.UserRole):
+                items_to_process.append(child)
+            items_to_process.extend(self.collect_items(child))
+        return items_to_process
+
     def auto_identify_files(self):
         self.identify_button.setEnabled(False)
         
         try:
-            total_items = TreeHelper.count_items_recursive(self.contents_tree.invisibleRootItem())
+            # Collect all items to process
+            items_to_process = self.collect_items(self.contents_tree.invisibleRootItem())
+            
+            total_items = len(items_to_process)
             self.progress_bar.setVisible(True)
             self.progress_bar.setRange(0, total_items)
             self.status_label.setText(f"Identifying file types (0/{total_items})...")
             
-            progress_count = self.identify_items_recursive(self.contents_tree.invisibleRootItem(), 0)
+            # Start processing items in parallel
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                future_to_item = {executor.submit(self.process_item, item): item 
+                                for item in items_to_process}
+                
+                completed = 0
+                for future in as_completed(future_to_item):
+                    completed += 1
+                    self.progress_bar.setValue(completed)
+                    self.status_label.setText(f"Identifying file types ({completed}/{total_items})...")
+                    
+                    # Process results and update UI
+                    result = future.result()
+                    self.result_queue.put(result)
+                    self.update_ui_from_queue()
+                    
+                    # Process Qt events
+                    QApplication.processEvents()
             
             self.progress_bar.setVisible(False)
-            self.status_label.setText(f"Archive: {self.archive_name} ({len(self.archive_entries)} files, {progress_count} identified)")
+            self.status_label.setText(f"Archive: {self.archive_name} ({len(self.archive_entries)} files, {completed} identified)")
             TableHelper.auto_resize_columns(self.contents_tree)
             
         except Exception as e:
@@ -249,35 +313,6 @@ class ArchivePreviewDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Error during identification: {str(e)}")
         finally:
             self.identify_button.setEnabled(True)
-        
-    def identify_items_recursive(self, parent_item, progress_count):
-        for i in range(parent_item.childCount()):
-            child = parent_item.child(i)
-            full_path = child.data(0, Qt.UserRole)
-            
-            if full_path:
-                self.progress_bar.setValue(progress_count)
-                self.status_label.setText(f"Identifying file types ({progress_count+1}/{self.progress_bar.maximum()}): {child.text(0)}")
-                
-                file_path = self.extract_file(child)
-                if file_path:
-                    file_path_obj = Path(file_path)
-                    if file_path_obj.exists() and file_path_obj.is_file():
-                        try:
-                            group, mime_type = FileIdentificationHelper.identify_file_with_magika(file_path_obj, self.magika_client)
-                            self.update_item_with_file_info(child, group, mime_type, str(file_path_obj))
-                        except Exception:
-                            group, mime_type = FileIdentificationHelper.identify_by_extension(child.text(0))
-                            self.update_item_with_file_info(child, group, mime_type, None, size_text="Unknown", hash_text="Extraction failed")
-                else:
-                    group, mime_type = FileIdentificationHelper.identify_by_extension(child.text(0))
-                    self.update_item_with_file_info(child, group, mime_type, None, size_text="Unknown", hash_text="Extraction failed")
-                
-                progress_count += 1
-            
-            progress_count = self.identify_items_recursive(child, progress_count)
-            
-        return progress_count
         
     def populate_tree(self):
         self.contents_tree.clear()
@@ -343,12 +378,16 @@ class ArchivePreviewDialog(QDialog):
             context_menu.addSeparator()
             hash_lookup_menu = QMenu("Lookup Hash", self)
             
-            for service, url in {
-                "virustotal": f"https://www.virustotal.com/gui/file/{sha1_hash}",
-                "hybrid": f"https://www.hybrid-analysis.com/search?query={sha1_hash}"
-            }.items():
-                action = QAction(service.title(), self)
-                action.triggered.connect(lambda u=url: self.open_hash_lookup(sha1_hash, service))
+            for service, name in [("filescan", "FileScan.io"), 
+                                ("metadefender", "MetaDefender Cloud"),
+                                ("virustotal", "VirusTotal")]:
+                action = QAction(name, self)
+                # Use a regular function instead of lambda to ensure proper closure
+                def create_hash_lookup_handler(s):
+                    def handler():
+                        self.open_hash_lookup(sha1_hash, s)
+                    return handler
+                action.triggered.connect(create_hash_lookup_handler(service))
                 hash_lookup_menu.addAction(action)
             
             context_menu.addMenu(hash_lookup_menu)
@@ -559,8 +598,9 @@ class ArchivePreviewDialog(QDialog):
         
     def open_hash_lookup(self, hash_value, service):
         urls = {
-            "virustotal": f"https://www.virustotal.com/gui/file/{hash_value}",
-            "hybrid": f"https://www.hybrid-analysis.com/search?query={hash_value}"
+            "filescan": f"https://www.filescan.io/search-result?query={hash_value}",
+            "metadefender": f"https://metadefender.com/results/hash/{hash_value}",
+            "virustotal": f"https://www.virustotal.com/gui/file/{hash_value}"
         }
         
         if service in urls:

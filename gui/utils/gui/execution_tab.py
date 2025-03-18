@@ -52,7 +52,7 @@ def create_phase_header(phase_name, parent):
         spacer = QTreeWidgetItem(["", "", "", "", ""])
         parent.sequence_tree.addTopLevelItem(spacer)
     
-    header = QTreeWidgetItem([f"📋 {phase_name.upper()}", "", "", "", ""])
+    header = QTreeWidgetItem([phase_name.upper(), "", "", "", ""])
     header_color = QColor(PHASE_COLORS[phase_name])
     header_color.setAlpha(80)
     
@@ -68,6 +68,7 @@ def create_phase_header(phase_name, parent):
     parent.sequence_tree.addTopLevelItem(header)
 
 def create_sequence_item(sequence, action, condition, impact, severity, phase_name, parent):
+    # Create the main action item
     item = QTreeWidgetItem([sequence, action, condition, "", impact])
     
     light_color = QColor(PHASE_COLORS[phase_name])
@@ -84,6 +85,70 @@ def create_sequence_item(sequence, action, condition, impact, severity, phase_na
     if severity in ["HIGH", "CRITICAL"]:
         for col in range(5):
             item.setBackground(col, QColor(255, 240, 240))
+    
+    # Add collapsible items for related files, INIs, services, and registry entries
+    if parent.tables_data:
+        # Check for custom actions that might reference files
+        custom_action = next((row for table in parent.tables_data if table["name"] == "CustomAction" 
+                            for row in table.get("rows", []) if row[0] == action), None)
+        
+        if custom_action:
+            ca_type = custom_action[1]
+            source = custom_action[2]
+            target = custom_action[3]
+            
+            # Add DLL/EXE references
+            if ca_type in ["1", "2", "70", "210"]:  # DLL, EXE, Custom setup, External program
+                if source and source != "NULL":
+                    file_item = QTreeWidgetItem(["", f"[FILE] {source}", "", "", ""])
+                    file_item.setForeground(1, QColor("blue"))
+                    item.addChild(file_item)
+            
+            # Add command-line operations
+            if ca_type == "38":  # Command-line environment
+                if target and target != "NULL":
+                    cmd_item = QTreeWidgetItem(["", f"[CMD] {target}", "", "", ""])
+                    cmd_item.setForeground(1, QColor("purple"))
+                    item.addChild(cmd_item)
+        
+        # Check for INI file operations - only show for relevant actions
+        if action in ["WriteIniValues", "RemoveIniValues"]:
+            ini_files = [row for table in parent.tables_data if table["name"] == "IniFile" 
+                        for row in table.get("rows", [])]
+            for ini_row in ini_files:
+                if len(ini_row) >= 2:
+                    ini_file = ini_row[1]
+                    if ini_file and ini_file != "NULL":
+                        ini_item = QTreeWidgetItem(["", f"[INI] {ini_file}", "", "", ""])
+                        ini_item.setForeground(1, QColor("green"))
+                        item.addChild(ini_item)
+        
+        # Check for registry operations
+        registry_entries = [row for table in parent.tables_data if table["name"] == "Registry" 
+                          for row in table.get("rows", [])]
+        for reg_row in registry_entries:
+            if len(reg_row) >= 5:
+                root = reg_row[1]
+                key = reg_row[2]
+                name = reg_row[3]
+                value = reg_row[4]
+                
+                # Only show registry entries for relevant actions
+                if action in ["WriteRegistryValues", "RemoveRegistryValues"]:
+                    reg_item = QTreeWidgetItem(["", f"[REG] {key}", "", "", ""])
+                    reg_item.setForeground(1, QColor("orange"))
+                    item.addChild(reg_item)
+        
+        # Check for service operations
+        service_installs = [row for table in parent.tables_data if table["name"] == "ServiceInstall" 
+                          for row in table.get("rows", [])]
+        for service_row in service_installs:
+            if len(service_row) >= 4:
+                service_name = service_row[1]
+                if service_name and service_name != "NULL":
+                    service_item = QTreeWidgetItem(["", f"[SVC] {service_name}", "", "", ""])
+                    service_item.setForeground(1, QColor("red"))
+                    item.addChild(service_item)
     
     parent.sequence_tree.addTopLevelItem(item)
 

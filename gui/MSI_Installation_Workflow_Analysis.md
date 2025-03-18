@@ -130,7 +130,3 @@ The following operations deserve special security scrutiny:
 - Files being installed to sensitive system locations
 - Custom actions with obfuscated parameters
 - Conditions designed to hide actions in certain environments
-
----
-
-Click the "Analyze Installation Workflow" button to examine the current MSI file's workflow in detail. 

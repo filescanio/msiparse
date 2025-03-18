@@ -191,7 +191,7 @@ def analyze_installation_impact(parent):
             install_dir = component_directories.get(file_entry["Component"], "UNKNOWN")
             filename = file_entry['FileName']
             display_name = filename.split("|")[0] if "|" in filename else filename
-            install_path = filename.split("|")[0] + ("\\" + filename.split("|")[1] if "|" in filename and filename.split("|")[1] else "")
+            install_path = filename.split("|")[1] if "|" in filename and filename.split("|")[1] else filename.split("|")[0]
             
             file_item = QTreeWidgetItem([
                 "", 
