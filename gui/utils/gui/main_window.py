@@ -151,12 +151,6 @@ class MSIParseGUI(QMainWindow):
         file_layout.addWidget(self.browse_button)
         main_layout.addLayout(file_layout)
         
-        # Progress bar
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 0)  # Indeterminate progress
-        self.progress_bar.setVisible(False)
-        main_layout.addWidget(self.progress_bar)
-        
         # Create and store tab references
         self.metadata_tab = self.create_metadata_tab()
         self.streams_tab = self.create_streams_tab()
@@ -302,7 +296,6 @@ class MSIParseGUI(QMainWindow):
             self.handle_error("Selection Error", f"Error handling stream selection change: {str(e)}", show_dialog=False)
         
     def run_command(self, command, callback):
-        self.progress_bar.setVisible(True)
         self.statusBar().showMessage("Running command...")
         
         self.thread = CommandThread(command)
@@ -314,7 +307,6 @@ class MSIParseGUI(QMainWindow):
         self.thread.start()
         
     def command_finished(self, thread):
-        self.progress_bar.setVisible(False)
         self.statusBar().showMessage("Command completed successfully")
         
     def cleanup_thread(self, thread):
@@ -565,11 +557,6 @@ class MSIParseGUI(QMainWindow):
             total_tables = len(self.tables_data)
             exported_count = 0
             
-            # Show progress
-            self.progress_bar.setRange(0, total_tables)
-            self.progress_bar.setValue(0)
-            self.progress_bar.setVisible(True)
-            
             # Export each table as a separate file
             for table in self.tables_data:
                 table_name = table["name"]
@@ -584,11 +571,7 @@ class MSIParseGUI(QMainWindow):
                 
                 # Update progress
                 exported_count += 1
-                self.progress_bar.setValue(exported_count)
                 QApplication.processEvents()  # Keep UI responsive
-            
-            # Hide progress bar when done
-            self.progress_bar.setVisible(False)
             
             # Update status
             self.statusBar().showMessage(f"Exported {exported_count} tables to {export_dir}")
@@ -601,9 +584,6 @@ class MSIParseGUI(QMainWindow):
             )
             
         except Exception as e:
-            # Hide progress bar on error
-            self.progress_bar.setVisible(False)
-            
             # Show error
             QMessageBox.critical(
                 self,

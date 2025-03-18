@@ -58,7 +58,6 @@ def extract_stream(parent, stream_name, output_dir=None, temp=False):
         output_dir = tempfile.mkdtemp()
         
     try:
-        parent.progress_bar.setVisible(True)
         parent.statusBar().showMessage(f"Extracting stream: {stream_name}")
         
         command = [parent.msiparse_path, "extract", parent.msi_file_path, output_dir, stream_name]
@@ -77,8 +76,6 @@ def extract_stream(parent, stream_name, output_dir=None, temp=False):
         parent.statusBar().showMessage("Error during extraction")
         QMessageBox.critical(parent, "Error", f"Error extracting file: {str(e)}")
         return None
-    finally:
-        parent.progress_bar.setVisible(False)
 
 def extract_streams(parent, stream_names=None):
     """
@@ -98,7 +95,6 @@ def extract_streams(parent, stream_names=None):
         return
         
     parent.last_output_dir = output_dir
-    parent.progress_bar.setVisible(True)
     
     if stream_names is None:
         # Extract all streams
@@ -106,13 +102,10 @@ def extract_streams(parent, stream_names=None):
         parent.run_command(command, lambda output: handle_extraction_complete(parent, output_dir))
     else:
         # Extract selected streams
-        parent.progress_bar.setRange(0, len(stream_names))
-        parent.progress_bar.setValue(0)
         parent.statusBar().showMessage(f"Extracting {len(stream_names)} streams...")
         
         errors = []
         for i, name in enumerate(stream_names):
-            parent.progress_bar.setValue(i + 1)
             parent.statusBar().showMessage(f"Extracting stream {i + 1}/{len(stream_names)}: {name}")
             
             if not extract_stream(parent, name, output_dir):
@@ -122,8 +115,7 @@ def extract_streams(parent, stream_names=None):
 
 def handle_extraction_complete(parent, output_dir, errors=None):
     """Handle completion of extraction process"""
-    parent.progress_bar.setVisible(False)
-    
+  
     if errors:
         error_msg = f"Completed with {len(errors)} errors:\n\n"
         for i, error in enumerate(errors[:5]):

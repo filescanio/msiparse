@@ -185,17 +185,11 @@ def get_status_messages():
 @contextlib.contextmanager
 def status_progress(parent, message, show_progress=True, indeterminate=True):
     """Context manager for showing status message with optional progress bar"""
-    if show_progress:
-        if indeterminate:
-            parent.progress_bar.setRange(0, 0)
-        parent.progress_bar.setVisible(True)
     parent.statusBar().showMessage(message)
     QApplication.processEvents()  # Keep UI responsive
     try:
-        yield
+        yield  # Allows code inside `with` to run
     finally:
-        if show_progress:
-            parent.progress_bar.setVisible(False)
         parent.statusBar().showMessage(parent.STATUS_MESSAGES['ready'])
 
 def run_command_safe(parent, command, success_message=None):

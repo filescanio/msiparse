@@ -31,7 +31,6 @@ def extract_certificates(parent):
         return
     
     # Show progress
-    parent.progress_bar.setVisible(True)
     parent.statusBar().showMessage("Saving digital signatures to disk...")
     
     # Build command
@@ -47,7 +46,6 @@ def extract_certificates(parent):
     
 def handle_certificate_extraction_complete(parent, output):
     """Handle completion of certificate extraction command"""
-    parent.progress_bar.setVisible(False)
     
     if "MSI file has a digital signature" in output:
         parent.statusBar().showMessage("Digital signature found and saved successfully")
@@ -104,7 +102,6 @@ def analyze_certificate(parent, show_dialogs=False):
     # If certificates haven't been extracted yet, extract them to a temporary directory
     if not hasattr(parent, 'extracted_cert_files') or not parent.extracted_cert_files:
         # Show progress
-        parent.progress_bar.setVisible(True)
         parent.statusBar().showMessage("Extracting digital signatures to temporary location...")
         
         # Create a temporary directory for extraction
@@ -138,7 +135,6 @@ def analyze_certificate(parent, show_dialogs=False):
                     # If no files were extracted, show warning and return
                     if not extracted_files:
                         parent.statusBar().showMessage("No signature files were extracted")
-                        parent.progress_bar.setVisible(False)
                         return
                         
                     # Analyze the extracted certificates
@@ -146,7 +142,6 @@ def analyze_certificate(parent, show_dialogs=False):
                     
                 elif "MSI file does not have a digital signature" in output:
                     parent.statusBar().showMessage("No digital signature found in the MSI file")
-                    parent.progress_bar.setVisible(False)
                     
                     # Only show message box if explicitly requested
                     if show_dialogs:
@@ -157,7 +152,6 @@ def analyze_certificate(parent, show_dialogs=False):
                         )
                 else:
                     parent.statusBar().showMessage("Unexpected output from certificate extraction")
-                    parent.progress_bar.setVisible(False)
                     
                     # Only show warning if explicitly requested
                     if show_dialogs:
@@ -165,15 +159,10 @@ def analyze_certificate(parent, show_dialogs=False):
                     
             except Exception as e:
                 parent.statusBar().showMessage(f"Error extracting certificates: {str(e)}")
-                parent.progress_bar.setVisible(False)
                 
                 # Only show error dialog if explicitly requested
                 if show_dialogs:
                     parent.show_error("Extraction Error", f"Failed to extract certificates: {str(e)}")
-                
-            finally:
-                # Hide progress bar
-                parent.progress_bar.setVisible(False)
     else:
         # Use previously extracted certificate files
         _analyze_certificate_files(parent, parent.extracted_cert_files)

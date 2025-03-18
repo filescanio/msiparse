@@ -8,6 +8,7 @@ import shutil
 from PyQt5.QtWidgets import QTreeWidgetItem, QMenu, QAction
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
+from PyQt5.QtWidgets import QApplication
 
 from threads.identifystreams import IdentifyStreamsThread
 from utils.gui.preview import show_hex_view, show_text_preview, show_image_preview, show_archive_preview
@@ -61,10 +62,6 @@ def identify_streams(parent):
     if not parent.msi_file_path or not parent.streams_data:
         return
         
-    # Set progress bar to show progress
-    parent.progress_bar.setRange(0, len(parent.streams_data))
-    parent.progress_bar.setValue(0)
-    parent.progress_bar.setVisible(True)
     parent.statusBar().showMessage("Identifying stream file types...")
     
     # Disable identify button while running
@@ -74,88 +71,95 @@ def identify_streams(parent):
     temp_dir = tempfile.mkdtemp()
     
     # Create and start the identification thread
-    parent.identify_thread = IdentifyStreamsThread(
-        parent,
-        parent.streams_data,
-        temp_dir
-    )
-    parent.active_threads.append(parent.identify_thread)
+    thread = IdentifyStreamsThread(parent, parent.streams_data, temp_dir)
+    parent.active_threads.append(thread)
     
     # Connect signals
-    parent.identify_thread.progress_updated.connect(parent.update_identify_progress)
-    parent.identify_thread.stream_identified.connect(parent.update_stream_file_type)
-    parent.identify_thread.finished.connect(parent.identify_streams_finished)
-    parent.identify_thread.error_occurred.connect(lambda msg: parent.handle_error("Identification Error", msg))
+    thread.progress_updated.connect(lambda current, total: update_identify_progress(parent, current, total))
+    thread.stream_identified.connect(lambda name, group, mime, size, hash: update_stream_file_type(parent, name, group, mime, size, hash))
+    thread.finished.connect(lambda: identify_streams_finished(parent, thread, temp_dir))
+    thread.error_occurred.connect(lambda msg: parent.handle_error("Identification Error", msg))
     
     # Start the thread
-    parent.identify_thread.start()
-    
+    thread.start()
+
 def update_identify_progress(parent, current, total):
-    """Update the progress bar during stream identification"""
-    parent.progress_bar.setValue(current)
-    parent.statusBar().showMessage(f"Identifying stream types: {current}/{total}")
-    
+    """Update the progress during stream identification"""
+    try:
+        # Update status message with percentage
+        percentage = (current / total) * 100
+        parent.statusBar().showMessage(f"Identifying stream types: {current}/{total} ({percentage:.1f}%)")
+        
+        # Force UI update
+        QApplication.processEvents()
+    except Exception as e:
+        print(f"Error updating progress: {str(e)}")
+
 def update_stream_file_type(parent, stream_name, group, mime_type, file_size, sha1_hash):
     """Update the group, MIME type, size, and SHA1 hash for a stream in the tree"""
-    # Temporarily disable sorting while updating
-    was_sorting_enabled = parent.streams_tree.isSortingEnabled()
-    parent.streams_tree.setSortingEnabled(False)
-    
-    # Get current filter text
-    current_filter = parent.streams_filter.text().lower()
-    
-    # Find the item for this stream
-    for i in range(parent.streams_tree.topLevelItemCount()):
-        item = parent.streams_tree.topLevelItem(i)
-        if item.text(0) == stream_name:
-            item.setText(1, group)
-            item.setText(2, mime_type)
-            item.setText(3, file_size)
-            item.setText(4, sha1_hash)
-            
-            # Set monospaced font for the hash column only
-            if sha1_hash and sha1_hash != "Error calculating hash" and sha1_hash != "":
-                mono_font = QFont("Courier New", 10)
-                mono_font.setFixedPitch(True)
-                item.setFont(4, mono_font)
-            
-            # Set icon based on group
-            set_icon_for_group(parent, item, group)
-            
-            # Set data for proper sorting of file sizes
-            if file_size != "Unknown":
-                try:
-                    # Extract the numeric value for sorting
-                    if file_size.endswith(" B"):
-                        size_value = float(file_size.split(" ")[0])
-                    elif file_size.endswith(" KB"):
-                        size_value = float(file_size.split(" ")[0]) * 1024
-                    elif file_size.endswith(" MB"):
-                        size_value = float(file_size.split(" ")[0]) * 1024 * 1024
-                    elif file_size.endswith(" GB"):
-                        size_value = float(file_size.split(" ")[0]) * 1024 * 1024 * 1024
-                    else:
-                        size_value = 0
-                    item.setData(3, Qt.UserRole, size_value)
-                except (ValueError, IndexError):
-                    pass
-                    
-            # Apply current filter if any
-            if current_filter:
-                # Check if any column contains the filter text
-                match_found = False
-                for col in range(parent.streams_tree.columnCount()):
-                    if current_filter in item.text(col).lower():
-                        match_found = True
-                        break
+    try:
+        # Store current sorting state
+        was_sorting_enabled = parent.streams_tree.isSortingEnabled()
+        
+        # Temporarily disable sorting for better performance
+        parent.streams_tree.setSortingEnabled(False)
+        
+        # Get current filter text
+        current_filter = parent.streams_filter.text().lower()
+        
+        # Find and update the item
+        for i in range(parent.streams_tree.topLevelItemCount()):
+            item = parent.streams_tree.topLevelItem(i)
+            if item.text(0) == stream_name:
+                # Update item data
+                item.setText(1, group)
+                item.setText(2, mime_type)
+                item.setText(3, file_size)
+                item.setText(4, sha1_hash)
+                
+                # Set icon based on group
+                set_icon_for_group(parent, item, group)
+                
+                # Set data for proper sorting of file sizes
+                if file_size != "Unknown":
+                    try:
+                        # Extract the numeric value for sorting
+                        if file_size.endswith(" B"):
+                            size_value = float(file_size.split(" ")[0])
+                        elif file_size.endswith(" KB"):
+                            size_value = float(file_size.split(" ")[0]) * 1024
+                        elif file_size.endswith(" MB"):
+                            size_value = float(file_size.split(" ")[0]) * 1024 * 1024
+                        elif file_size.endswith(" GB"):
+                            size_value = float(file_size.split(" ")[0]) * 1024 * 1024 * 1024
+                        else:
+                            size_value = 0
+                        item.setData(3, Qt.UserRole, size_value)
+                    except (ValueError, IndexError):
+                        pass
                         
-                # Show or hide the item based on the match
-                item.setHidden(not match_found)
-            break
-    
-    # Restore sorting state
-    parent.streams_tree.setSortingEnabled(was_sorting_enabled)
-    
+                # Apply current filter if any
+                if current_filter:
+                    # Check if any column contains the filter text
+                    match_found = False
+                    for col in range(parent.streams_tree.columnCount()):
+                        if current_filter in item.text(col).lower():
+                            match_found = True
+                            break
+                            
+                    # Show or hide the item based on the match
+                    item.setHidden(not match_found)
+                break
+        
+        # Restore sorting state
+        parent.streams_tree.setSortingEnabled(was_sorting_enabled)
+        
+        # Force UI update
+        QApplication.processEvents()
+        
+    except Exception as e:
+        print(f"Error updating stream type: {str(e)}")
+
 def set_icon_for_group(parent, item, group):
     """Set an appropriate icon based on the file group"""
     if not group or group == "undefined":
@@ -168,33 +172,43 @@ def set_icon_for_group(parent, item, group):
     else:
         item.setIcon(0, parent.group_icons['unknown'])
         
-def identify_streams_finished(parent):
+def identify_streams_finished(parent, thread, temp_dir):
     """Called when stream identification is complete"""
-    parent.progress_bar.setVisible(False)
-    parent.identify_streams_button.setEnabled(True)
-    
-    # Clean up the temporary directory
-    if hasattr(parent.identify_thread, 'temp_dir'):
+    try:
+        # Clean up the thread
+        if thread in parent.active_threads:
+            parent.active_threads.remove(thread)
+        thread.cleanup()
+        
+        # Clean up the temporary directory
         try:
-            shutil.rmtree(parent.identify_thread.temp_dir, ignore_errors=True)
+            shutil.rmtree(temp_dir, ignore_errors=True)
         except Exception as e:
             parent.handle_error("Cleanup Error", f"Failed to clean up temporary directory: {str(e)}")
-    
-    # Get current filter text
-    current_filter = parent.streams_filter.text().lower()
-    
-    # Count visible items if there's a filter
-    if current_filter:
-        visible_count = 0
-        for i in range(parent.streams_tree.topLevelItemCount()):
-            if not parent.streams_tree.topLevelItem(i).isHidden():
-                visible_count += 1
-        parent.statusBar().showMessage(f"Stream identification completed. Showing {visible_count} of {parent.streams_tree.topLevelItemCount()} streams")
-    else:
-        parent.statusBar().showMessage("Stream identification completed")
-    
-    # Resize columns to fit content
-    resize_streams_columns(parent)
+        
+        # Update UI
+        parent.identify_streams_button.setEnabled(True)
+        
+        # Get current filter text
+        current_filter = parent.streams_filter.text().lower()
+        
+        # Count visible items if there's a filter
+        if current_filter:
+            visible_count = 0
+            for i in range(parent.streams_tree.topLevelItemCount()):
+                if not parent.streams_tree.topLevelItem(i).isHidden():
+                    visible_count += 1
+            parent.statusBar().showMessage(f"Stream identification completed. Showing {visible_count} of {parent.streams_tree.topLevelItemCount()} streams")
+        else:
+            parent.statusBar().showMessage("Stream identification completed")
+        
+        # Resize columns to fit content
+        resize_streams_columns(parent)
+        
+    except Exception as e:
+        parent.handle_error("Cleanup Error", f"Error during cleanup: {str(e)}")
+        # Ensure UI is restored even if cleanup fails
+        parent.identify_streams_button.setEnabled(True)
     
 def resize_streams_columns(parent):
     """Resize the columns in the streams tree to fit content but not more than 33% of width"""
