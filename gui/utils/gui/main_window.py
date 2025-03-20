@@ -186,16 +186,11 @@ class MSIParseGUI(QMainWindow):
         """Set up keyboard shortcuts for the application"""
         # Global shortcut for Ctrl+F that works on any tab
         self.global_filter_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        self.global_filter_shortcut.setContext(Qt.ApplicationShortcut)  # Make it work anywhere in the application
         self.global_filter_shortcut.activated.connect(self.focus_current_filter)
         
-        # Tab-specific shortcuts as fallbacks
-        if hasattr(self, 'streams_tab'):
-            self.streams_filter_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.streams_tab)
-            self.streams_filter_shortcut.activated.connect(lambda: self.streams_filter.setFocus())
-        
-        if hasattr(self, 'tables_tab'):
-            self.tables_filter_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.tables_tab)
-            self.tables_filter_shortcut.activated.connect(lambda: self.table_filter.setFocus())
+        # We don't need tab-specific shortcuts since the global one will handle all cases
+        # via the focus_current_filter method
         
         # Escape key to clear filters when they have focus
         if hasattr(self, 'streams_filter'):
@@ -207,13 +202,30 @@ class MSIParseGUI(QMainWindow):
             self.table_filter_escape.activated.connect(self.table_filter.clear)
         
     def focus_current_filter(self):
-        """Focus on the filter field of the currently active tab"""
-        current_tab = self.tabs.currentWidget()
-        
-        if current_tab == self.streams_tab:
-            self.streams_filter.setFocus()
-        elif current_tab == self.tables_tab:
-            self.table_filter.setFocus()
+        """Focus on the filter field of the currently active tab or dialog"""
+        try:
+            # First check if there's an active dialog that has focus
+            active_window = QApplication.activeWindow()
+            
+            # Check for ArchivePreviewDialog or any dialog with 'contents_filter'
+            if active_window and active_window != self and hasattr(active_window, 'contents_filter'):
+                # This is likely an ArchivePreviewDialog
+                active_window.contents_filter.setFocus()
+                return
+                
+            # If no active dialog with filter, focus on the current tab's filter
+            current_tab = self.tabs.currentWidget()
+            
+            if current_tab == self.streams_tab and hasattr(self, 'streams_filter'):
+                self.streams_filter.setFocus()
+            elif current_tab == self.tables_tab and hasattr(self, 'table_filter'):
+                self.table_filter.setFocus()
+            # Can add more tab types with filters here in the future
+            
+        except Exception as e:
+            # Log error but don't disrupt the UI
+            print(f"Error focusing filter: {str(e)}")
+            self.statusBar().showMessage(f"Error focusing on filter field", 3000)
         
     def update_button_states(self):
         """Update the enabled state of buttons based on current state"""

@@ -119,13 +119,28 @@ class ArchivePreviewDialog(QDialog):
         
     def setup_shortcuts(self):
         """Set up keyboard shortcuts for the dialog"""
-        # Ctrl+F to focus on filter
+        # Ctrl+F to focus on filter - set context to window context
         self.filter_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        self.filter_shortcut.setContext(Qt.WindowShortcut)  # Make it work anywhere in the window
         self.filter_shortcut.activated.connect(lambda: self.contents_filter.setFocus())
         
-        # Escape key to clear filter when it has focus
-        self.filter_escape = QShortcut(QKeySequence("Escape"), self.contents_filter)
-        self.filter_escape.activated.connect(self.contents_filter.clear)
+        # Escape key for both clearing filter and closing dialog based on focus
+        self.escape_shortcut = QShortcut(QKeySequence("Escape"), self)
+        self.escape_shortcut.activated.connect(self.handle_escape_key)
+        
+    def handle_escape_key(self):
+        """Handle the Escape key press for the dialog"""
+        if self.contents_filter.hasFocus():
+            # If filter has focus
+            if self.contents_filter.text():
+                # If filter has text, clear it
+                self.contents_filter.clear()
+            else:
+                # If filter is already empty, close the dialog
+                self.close_and_cleanup()
+        else:
+            # Otherwise close the dialog
+            self.close_and_cleanup()
         
     def filter_contents(self, filter_text):
         """Filter the contents tree based on the input text"""
