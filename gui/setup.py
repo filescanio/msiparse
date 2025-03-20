@@ -7,7 +7,6 @@ setup(
     install_requires=[
         "PyQt5>=5.15.11",
         "magika>=0.5.1",
-        "libarchive-c>=5.2.0",
     ],
     entry_points={
         "console_scripts": [

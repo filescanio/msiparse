@@ -16,34 +16,26 @@ import os
 import pathlib
 from PyQt5.QtWidgets import (QApplication, QMessageBox)
 
-# Check for archive.dll in the current directory before importing libarchive
-archive_dll_path = pathlib.Path(__file__).parent / "archive.dll"
-if archive_dll_path.exists():
-    # Set LIBARCHIVE environment variable to the absolute path of archive.dll
-    os.environ["LIBARCHIVE"] = str(archive_dll_path.absolute())
-    print(f"Found archive.dll, setting LIBARCHIVE={os.environ['LIBARCHIVE']}")
-
-# Try to import libarchive for archive handling
+# Try to import our custom 7z-based archive handler
 try:
-    import libarchive
-    LIBARCHIVE_AVAILABLE = True
-except (ImportError, TypeError):
-    LIBARCHIVE_AVAILABLE = False
+    from utils import archive7z
+    ARCHIVE_SUPPORT_AVAILABLE = archive7z.is_available()
+except ImportError:
+    ARCHIVE_SUPPORT_AVAILABLE = False
 
-def check_libarchive_support():
-    """Check if libarchive is available"""
-    return LIBARCHIVE_AVAILABLE
+def check_archive_support():
+    """Check if 7z archive support is available"""
+    return ARCHIVE_SUPPORT_AVAILABLE
 
-def show_libarchive_warning(parent=None):
-    """Show a warning if libarchive is not available"""
-    if not LIBARCHIVE_AVAILABLE:
+def show_archive_support_warning(parent=None):
+    """Show a warning if 7z is not available"""
+    if not ARCHIVE_SUPPORT_AVAILABLE:
         QMessageBox.warning(
             parent,
-            "LibArchive Not Available",
-            "The libarchive-c library is not installed or the required DLL/SO files are missing.\n"
+            "7-Zip Not Available",
+            "The 7z command-line tool is not installed or not in the system path.\n"
             "Archive preview functionality will be disabled.\n\n"
-            "To enable archive support, install libarchive-c with:\n"
-            "pip install libarchive-c"
+            "To enable archive support, install 7-Zip and ensure it's in your system path."
         )
 
 def main():
@@ -54,15 +46,15 @@ def main():
     # Now it's safe to import modules that might create QWidgets
     from utils.gui import MSIParseGUI
     
-    # Check libarchive support once at startup
-    has_archive_support = check_libarchive_support()
+    # Check archive support once at startup
+    has_archive_support = check_archive_support()
     
     # Create the main window
     window = MSIParseGUI(archive_support=has_archive_support)
     
     # Now it's safe to show warnings
     if not has_archive_support:
-        show_libarchive_warning(window)
+        show_archive_support_warning(window)
     
     # Show the window
     window.show()

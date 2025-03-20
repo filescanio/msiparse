@@ -1,10 +1,9 @@
 PyQt5>=5.15.11
 magika>=0.5.1
-# Note: libarchive-c requires the libarchive system library to be installed
-# On Windows: Download from https://github.com/libarchive/libarchive/wiki/Downloads or use Chocolatey
-# On macOS: brew install libarchive
-# On Linux: sudo apt install libarchive-dev (or equivalent for your distribution)
-libarchive-c>=5.2.0
+# Note: The application requires 7-Zip command-line tool for archive handling
+# On Windows: Install from https://7-zip.org/ or use Chocolatey: choco install 7zip
+# On macOS: brew install p7zip
+# On Linux: sudo apt install p7zip-full (or equivalent for your distribution)
 # For certificate analysis
 cryptography>=42.0.0
 asn1crypto>=1.5.1

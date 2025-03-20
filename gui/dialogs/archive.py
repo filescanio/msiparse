@@ -19,12 +19,15 @@ from utils.common import (format_file_size, calculate_sha1, TableHelper, TreeHel
 from utils.preview import (show_hex_view_dialog, show_text_preview_dialog, 
                           show_image_preview_dialog)
 
-# Try to import libarchive for archive handling
+# Import our custom 7z-based archive handler
+from utils import archive7z
+
+# Try to import cabarchive for better CAB file support
 try:
-    import libarchive
-    LIBARCHIVE_AVAILABLE = True
+    import cabarchive
+    CABARCHIVE_AVAILABLE = True
 except (ImportError, TypeError):
-    LIBARCHIVE_AVAILABLE = False
+    CABARCHIVE_AVAILABLE = False
 
 class ArchivePreviewDialog(QDialog):
     """Dialog for displaying archive contents"""
@@ -41,6 +44,9 @@ class ArchivePreviewDialog(QDialog):
         
         # Initialize magika
         self.magika_client = magika.Magika()
+        
+        # Initialize 7z archive handler
+        self.archive_handler = archive7z.Archive7z()
         
         # Initialize parallel processing components
         self.result_queue = Queue()
@@ -189,15 +195,18 @@ class ArchivePreviewDialog(QDialog):
             except Exception:
                 pass
                 
+        # Clean up archive handler's temporary directories
+        self.archive_handler.cleanup()
+                
         # Close the dialog
         self.accept()
         
     def load_archive_contents(self):
         """Load the contents of the archive"""
-        if not LIBARCHIVE_AVAILABLE:
-            self.status_label.setText("Error: libarchive is not available")
+        if not archive7z.is_available():
+            self.status_label.setText("Error: 7z command-line tool is not available")
             self.progress_bar.setVisible(False)
-            QMessageBox.critical(self, "Error", "libarchive is not available. Cannot preview archive.")
+            QMessageBox.critical(self, "Error", "7z command-line tool is not available. Please install 7-Zip.")
             return
             
         try:
@@ -211,10 +220,13 @@ class ArchivePreviewDialog(QDialog):
             QApplication.processEvents()  # Ensure UI updates
             
             # List archive entries
-            with libarchive.file_reader(self.archive_path) as archive:
-                # Count entries for progress
-                self.archive_entries = list(archive)
-                
+            try:
+                # Get archive entries using our 7z handler
+                entries = self.archive_handler.list_contents(self.archive_path)
+                self.archive_entries = [archive7z.ArchiveEntry(entry) for entry in entries]
+            except Exception as e:
+                raise Exception(f"Failed to list archive contents: {str(e)}")
+            
             # Update status
             self.status_label.setText(f"Archive: {self.archive_name} ({len(self.archive_entries)} files)")
             
@@ -249,7 +261,7 @@ class ArchivePreviewDialog(QDialog):
                     return (item, group, mime_type, size, sha1)
         except Exception:
             pass
-        return (item, "unknown", "application/octet-stream", "Unknown", "Error calculating hash")
+        return (item, "", "application/octet-stream", "Unknown", "Error calculating hash")
 
     def update_ui_from_queue(self):
         """Update UI with results from the queue"""
@@ -494,70 +506,88 @@ class ArchivePreviewDialog(QDialog):
             if not self.temp_dir:
                 self.temp_dir = tempfile.mkdtemp()
                 
-            normalized_paths = [
-                full_path,
-                full_path.replace('\\', '/'),
-                full_path.replace('\\', '/').lstrip('/'),
-                os.path.basename(full_path)
-            ]
-            
             safe_filename = os.path.basename(full_path.replace('\\', '/'))
             output_path = os.path.join(self.temp_dir, safe_filename)
             output_path_obj = Path(output_path)
             
             if output_path in self.extracted_files and output_path_obj.exists():
                 return str(output_path_obj)
-                
-            for normalized_path in normalized_paths:
-                for method in [self._extract_with_file_reader, self._extract_with_archive_class]:
-                    try:
-                        result = method(normalized_path, str(output_path_obj))
-                        if result:
-                            return result
-                    except Exception:
-                        continue
             
+            extraction_errors = []
+            
+            # Try to extract using our 7z handler
             try:
-                output_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(self.archive_path, str(output_path_obj))
-                if output_path_obj.exists():
-                    self.extracted_files.add(str(output_path_obj))
-                    return str(output_path_obj)
-            except Exception:
-                pass
+                result = self.archive_handler.extract_file(self.archive_path, full_path, str(output_path_obj))
+                if result:
+                    self.extracted_files.add(output_path)
+                    return result
+            except Exception as e:
+                extraction_errors.append(f"7z extraction ({full_path}): {str(e)}")
             
-            return os.path.join(self.temp_dir, "dummy_" + safe_filename)
+            # Try cabarchive if available and if the file might be a CAB file
+            if CABARCHIVE_AVAILABLE:
+                try:
+                    result = self._extract_with_cabarchive(safe_filename, str(output_path_obj))
+                    if result:
+                        return result
+                except Exception as e:
+                    extraction_errors.append(f"cabarchive ({safe_filename}): {str(e)}")
             
-        except Exception:
-            return os.path.join(self.temp_dir, "dummy_" + os.path.basename(full_path))
+            # If extraction failed, log detailed errors
+            error_msg = f"Failed to extract: {safe_filename}. "
+            if extraction_errors:
+                error_details = f"Tried {len(extraction_errors)} extraction methods. Last error: {extraction_errors[-1]}"
+                self.status_label.setText(error_msg + error_details)
+            else:
+                self.status_label.setText(error_msg + "No extraction method succeeded.")
+                
+            return None
             
-    def _extract_with_file_reader(self, normalized_path, output_path):
-        with libarchive.file_reader(self.archive_path) as archive:
-            for entry in archive:
-                entry_path = entry.pathname.replace('\\', '/').lstrip('/')
-                if entry_path == normalized_path:
+        except Exception as e:
+            error_msg = f"Error during extraction: {str(e)}"
+            self.status_label.setText(error_msg)
+            return None
+
+    def _extract_with_cabarchive(self, entry_name, output_path):
+        """Extract a file using python-cabarchive library"""
+        # First check if the file is a CAB file
+        try:
+            with open(self.archive_path, 'rb') as f:
+                try:
+                    cab = cabarchive.CabArchive(f.read())
+                except Exception as e:
+                    raise Exception(f"Not a valid CAB file or cabarchive could not parse it: {str(e)}")
+                
+                # Try exact match first
+                if entry_name in cab:
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    with open(output_path, 'wb') as output_file:
-                        for block in entry.get_blocks():
-                            output_file.write(block)
+                    with open(output_path, 'wb') as out_f:
+                        out_f.write(cab[entry_name].buf)
                     self.extracted_files.add(output_path)
                     return output_path
-        return None
-        
-    def _extract_with_archive_class(self, normalized_path, output_path):
-        with open(self.archive_path, 'rb') as archive_file:
-            with libarchive.Archive(archive_file) as archive:
-                for entry in archive:
-                    entry_path = entry.pathname.replace('\\', '/').lstrip('/')
-                    if entry_path == normalized_path:
+                
+                # Try case-insensitive match
+                for filename, cabfile in cab.items():
+                    if filename.lower() == entry_name.lower():
                         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                        with open(output_path, 'wb') as output_file:
-                            for block in entry.get_blocks():
-                                output_file.write(block)
+                        with open(output_path, 'wb') as out_f:
+                            out_f.write(cabfile.buf)
                         self.extracted_files.add(output_path)
                         return output_path
-        return None
-        
+                
+                # Try partial match as last resort
+                for filename, cabfile in cab.items():
+                    if entry_name in filename or filename in entry_name:
+                        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                        with open(output_path, 'wb') as out_f:
+                            out_f.write(cabfile.buf)
+                        self.extracted_files.add(output_path)
+                        return output_path
+                
+                raise Exception(f"File '{entry_name}' not found in CAB archive")
+        except Exception as e:
+            raise Exception(f"CAB extraction error: {str(e)}")
+
     def extract_file_to_user_location(self, item):
         full_path = item.data(0, Qt.UserRole)
         if not full_path:
@@ -638,7 +668,7 @@ class ArchivePreviewDialog(QDialog):
         else:
             item.setText(4, "")
             
-        if self.group_icons and group in self.group_icons:
+        if group and self.group_icons and group in self.group_icons:
             item.setIcon(0, self.group_icons[group])
         elif self.group_icons and "unknown" in self.group_icons:
             item.setIcon(0, self.group_icons["unknown"])
