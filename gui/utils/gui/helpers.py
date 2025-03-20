@@ -9,8 +9,15 @@ from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 
-def show_text_preview_dialog(parent, file_name, file_path):
-    """Show a text preview dialog for the given file path"""
+def show_text_preview_dialog(parent, file_name, file_path, mime_type=None):
+    """Show a text preview dialog for the given file path with optional MIME type
+    
+    Args:
+        parent: Parent widget
+        file_name: Name of the file to display
+        file_path: Path to the file to read
+        mime_type: Optional MIME type from Magika identification
+    """
     from dialogs.text import TextPreviewDialog
     
     content = None
@@ -34,7 +41,7 @@ def show_text_preview_dialog(parent, file_name, file_path):
             QMessageBox.warning(parent, "Error", "Failed to read text file")
         return False
         
-    text_dialog = TextPreviewDialog(parent, file_name, content)
+    text_dialog = TextPreviewDialog(parent, file_name, content, mime_type)
     text_dialog.exec_()
     return True
 

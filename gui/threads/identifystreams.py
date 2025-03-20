@@ -80,7 +80,7 @@ class IdentifyStreamsWorker(QObject):
                         mime_type = result.output.mime_type
                     except Exception as e:
                         self.error_occurred.emit(f"Error identifying file type for {stream_name}: {str(e)}")
-                        group = "unknown"
+                        group = ""
                         mime_type = "application/octet-stream"
 
                     # Emit results through signals

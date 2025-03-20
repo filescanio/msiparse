@@ -33,8 +33,8 @@ class HexViewDialog(BasePreviewDialog):
                        (f" (showing first {display_limit * 16} bytes)" if num_rows == display_limit else ""))
         
         # Create header
-        header = "Offset   | 00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F | ASCII\n"
-        header += "-" * 79 + "\n"
+        header = "Offset   | 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F | ASCII\n"
+        header += "-" * 79
         self.hex_view.setText(header)
         
         # Process in chunks

@@ -53,7 +53,8 @@ from utils.gui.tables_tab import (
 )
 from utils.gui.footprint_tab import (
     analyze_installation_impact,
-    display_installation_impact
+    display_installation_impact,
+    create_footprint_tab
 )
 from utils.gui.execution_tab import (
     display_workflow_analysis,
@@ -929,29 +930,7 @@ class MSIParseGUI(QMainWindow):
 
     def create_footprint_tab(self):
         """Create the installation impact tab"""
-        footprint_tab = QWidget()
-        impact_layout = QVBoxLayout()
-        footprint_tab.setLayout(impact_layout)
-        
-        # Add description label
-        impact_description = QLabel("Analyze the MSI package to identify all system changes and artifacts that will be created during installation, including files, registry entries, services, and more.")
-        impact_description.setWordWrap(True)
-        impact_layout.addWidget(impact_description)
-        
-        # Tree view for installation impact details
-        self.impact_tree = QTreeWidget()
-        self.impact_tree.setColumnCount(4)
-        self.impact_tree.setHeaderLabels(["Type", "Entry", "Concern", "Details"])
-        self.impact_tree.setAlternatingRowColors(True)
-        self.impact_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-        
-        # Enable context menu for impact tree
-        self.impact_tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.impact_tree.customContextMenuRequested.connect(self.show_impact_context_menu)
-        
-        impact_layout.addWidget(self.impact_tree, 1)
-        
-        return footprint_tab
+        return create_footprint_tab(self)
 
     def create_help_tab(self):
         """Create the help tab"""

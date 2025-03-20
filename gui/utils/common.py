@@ -93,7 +93,8 @@ class TableHelper:
             for col_idx, cell_data in enumerate(row_data):
                 if col_idx < len(columns):
                     item = QTableWidgetItem(str(cell_data))
-                    if "hash" in columns[col_idx].lower() or TableHelper.is_hash_value(cell_data):
+                    # Apply monospace font to hash columns or hash-like values
+                    if "hash" in columns[col_idx].lower() and cell_data and cell_data not in ("Error calculating hash", ""):
                         item.setFont(mono_font)
                     table_widget.setItem(row_idx, col_idx, item)
         
@@ -146,10 +147,13 @@ class TreeHelper:
     def apply_hash_font_to_tree_item(item, column_index, mono_font=None):
         """Apply monospaced font to a tree item's hash column"""
         if mono_font is None:
-            mono_font = QFont("Courier New", 10)
+            mono_font = QFont("Courier")  # Use Courier instead of Courier New
+            mono_font.setStyleHint(QFont.Monospace)  # Ensure monospace fallback
             mono_font.setFixedPitch(True)
-            
-        if TableHelper.is_hash_value(item.text(column_index)):
+        
+        # Apply monospace font to all hash values, even if they're not valid hashes
+        hash_text = item.text(column_index)
+        if hash_text and hash_text not in ("Error calculating hash", ""):
             item.setFont(column_index, mono_font)
             return True
         return False
@@ -203,7 +207,7 @@ class FileIdentificationHelper:
                 return FileIdentificationHelper.identify_by_extension(str(path_obj))
                 
             if path_obj.stat().st_size == 0:
-                return ('unknown', 'Empty file')
+                return ('', 'Empty file')
                 
             try:
                 result = magika_client.identify_path(path_obj)
@@ -211,7 +215,8 @@ class FileIdentificationHelper:
                 result = magika_client.identify_path(str(path_obj))
                 
             mime_type = result.output.mime_type
-            group = FileIdentificationHelper.determine_file_group(mime_type)
+            # Get group directly from Magika instead of determining it ourselves
+            group = result.output.group
             return (group, mime_type)
         except Exception:
             return FileIdentificationHelper.identify_by_extension(str(file_path))
@@ -284,7 +289,7 @@ class FileIdentificationHelper:
             '.sfx': ('audio', 'audio/x-sfx'),
         }
         
-        return extension_map.get(ext, ('unknown', f'application/octet-stream (unknown extension: {ext})'))
+        return extension_map.get(ext, ('', f'application/octet-stream (unknown extension: {ext})'))
     
     @staticmethod
     def update_tree_item_with_file_info(item, group, mime_type, file_path, group_icons, size_text=None, hash_text=None):

@@ -186,7 +186,8 @@ def reset_to_original_order(parent):
     current_filter = parent.streams_filter.text().lower()
     parent.streams_tree.clear()
     
-    mono_font = QFont("Courier New", 10)
+    mono_font = QFont("Courier")
+    mono_font.setStyleHint(QFont.Monospace)
     mono_font.setFixedPitch(True)
     
     visible_count = 0

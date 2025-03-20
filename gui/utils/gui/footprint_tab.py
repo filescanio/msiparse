@@ -4,8 +4,10 @@ Installation Impact tab functionality for the MSI Parser GUI
 
 import json
 import re
+import os
 from PyQt5.QtWidgets import (QTreeWidgetItem, QTableWidgetItem, QHeaderView,
-                            QMessageBox, QTreeWidget, QMenu, QAction, QApplication)
+                            QMessageBox, QTreeWidget, QMenu, QAction, QApplication,
+                            QCheckBox, QHBoxLayout, QWidget, QVBoxLayout, QLabel)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor
 
@@ -38,30 +40,6 @@ SERVICE_START_TYPES = {
     "0x00000004": "Disabled"
 }
 
-MSI_DIRECTORIES = {
-    "TARGETDIR": "Root Installation Directory",
-    "ProgramFilesFolder": "Program Files",
-    "ProgramFiles64Folder": "Program Files (x64)",
-    "ProgramMenuFolder": "Start Menu",
-    "SystemFolder": "System32",
-    "System64Folder": "System64",
-    "AppDataFolder": "AppData",
-    "CommonAppDataFolder": "Common AppData",
-    "CommonFiles64Folder": "Common Files (x64)",
-    "CommonFilesFolder": "Common Files",
-    "DesktopFolder": "Desktop",
-    "FavoritesFolder": "Favorites",
-    "FontsFolder": "Fonts",
-    "PersonalFolder": "Personal",
-    "SendToFolder": "SendTo",
-    "StartMenuFolder": "Start Menu",
-    "StartupFolder": "Startup",
-    "TempFolder": "Temp",
-    "TemplateFolder": "Templates",
-    "WindowsFolder": "Windows",
-    "WindowsVolume": "Windows Volume"
-}
-
 AUTORUN_PATTERNS = [
     r".*\\Run\\.*",
     r".*\\RunOnce\\.*",
@@ -73,6 +51,106 @@ AUTORUN_PATTERNS = [
     r".*\\ShellServiceObjects\\.*"
 ]
 
+SUSPICIOUS_FILE_PATTERNS = [
+    r".*\\windows\\system32\\.*\.(exe|dll|sys|drv)$",
+    r".*\\windows\\syswow64\\.*\.(exe|dll|sys|drv)$",
+    r".*\\appdata\\.*\\microsoft\\windows\\start menu\\programs\\startup\\.*",
+    r".*\\programdata\\.*\\microsoft\\windows\\start menu\\programs\\startup\\.*",
+    r".*\\program files\\.*\\common files\\.*\.(exe|dll|sys|drv)$",
+    r".*\\program files \(x86\)\\common files\\.*\.(exe|dll|sys|drv)$"
+]
+
+SUSPICIOUS_REGISTRY_PATTERNS = [
+    # Expand existing AUTORUN_PATTERNS with more specific entries
+    r".*\\Windows\\CurrentVersion\\Explorer\\Browser Helper Objects\\.*",
+    r".*\\Browser Extensions\\.*",
+    r".*\\Winlogon\\.*",
+    r".*\\SecurityProviders\\.*",
+    r".*\\Services\\.*",
+    r".*\\NetworkProvider\\.*",
+    r".*\\Schedule\\TaskCache\\.*",
+    r".*\\PolicyManager\\.*",
+    r".*\\Group Policy\\Scripts\\.*",
+    r".*\\Windows\\CurrentVersion\\ShellServiceObjectDelayLoad\\.*",
+    r".*\\Windows\\CurrentVersion\\Shell Extensions\\Approved\\.*",
+    r".*\\Windows\\CurrentVersion\\Shell Extensions\\Blocked\\.*",
+    r".*\\Windows\\CurrentVersion\\ShellServiceObjectDelayLoad\\.*",
+    r".*\\Windows\\CurrentVersion\\Shell Extensions\\Approved\\.*",
+    r".*\\Windows\\CurrentVersion\\Shell Extensions\\Blocked\\.*"
+]
+
+CRITICAL_DIRECTORIES = {
+    "SystemFolder": "System directory modification",
+    "System64Folder": "System directory modification",
+    "WindowsFolder": "Windows directory modification",
+    "StartupFolder": "Startup folder modification",
+    "CommonFilesFolder": "Common Files directory modification",
+    "CommonFiles64Folder": "Common Files (x64) directory modification"
+}
+
+# Add new constants for file extensions
+HIGH_RISK_EXTENSIONS = {
+    '.vbs': 'VBScript file',
+    '.vbe': 'VBScript file',
+    '.wsf': 'Windows Script File',
+    '.wsh': 'Windows Script Host file',
+    '.hta': 'HTML Application',
+    '.scr': 'Screen Saver',
+    '.cpl': 'Control Panel Extension',
+    '.msc': 'Microsoft Management Console file',
+    '.lnk': 'Windows Shortcut file',
+    '.pif': 'Program Information File',
+}
+
+MEDIUM_RISK_EXTENSIONS = {
+    '.ps1': 'PowerShell script',
+    '.psm1': 'PowerShell module',
+    '.psd1': 'PowerShell data file',
+    '.bat': 'Batch file',
+    '.cmd': 'Command file',
+    '.reg': 'Registry file',
+    '.sys': 'System driver file',
+    '.xll': 'Excel Add-in file'
+}
+
+# Example paths for MSI directories (for demonstration)
+MSI_DIRECTORY_EXAMPLES = {
+    "TARGETDIR": "C:\\Program Files\\ExampleApp",
+    "ProgramFilesFolder": "C:\\Program Files (x86)",
+    "ProgramFiles64Folder": "C:\\Program Files",
+    "SystemFolder": "C:\\Windows\\System32",
+    "AppDataFolder": "C:\\Users\\%USERNAME%\\AppData\\Roaming",
+    "CommonAppDataFolder": "C:\\ProgramData",
+    "CommonFilesFolder": "C:\\Program Files\\Common Files",
+    "DesktopFolder": "C:\\Users\\%USERNAME%\\Desktop",
+    "FavoritesFolder": "C:\\Users\\%USERNAME%\\Favorites",
+    "FontsFolder": "C:\\Windows\\Fonts",
+    "PersonalFolder": "C:\\Users\\%USERNAME%\\Documents",
+    "SendToFolder": "C:\\Users\\%USERNAME%\\AppData\\Roaming\\Microsoft\\Windows\\SendTo",
+    "StartMenuFolder": "C:\\Users\\%USERNAME%\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu",
+    "StartupFolder": "C:\\Users\\%USERNAME%\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup",
+    "TempFolder": "C:\\Windows\\Temp",
+    "TemplateFolder": "C:\\Users\\%USERNAME%\\AppData\\Roaming\\Microsoft\\Windows\\Templates",
+    "WindowsFolder": "C:\\Windows",
+    "WindowsVolume": "C:\\",
+    "SourceDir": "D:\\SetupFiles\\ExampleInstaller",
+    "INSTALLDIR": "C:\\Program Files\\ExampleApp",
+    "LocalAppDataFolder": "C:\\Users\\%USERNAME%\\AppData\\Local",
+    "CommonDesktopFolder": "C:\\Users\\Public\\Desktop",
+    "CommonStartMenuFolder": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu",
+    "CommonStartupFolder": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup",
+    "AdminToolsFolder": "C:\\Users\\%USERNAME%\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Administrative Tools",
+    "CommonAdminToolsFolder": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Administrative Tools",
+    "NetworkFolder": "C:\\Windows\\Network Shortcuts",
+    "MyPicturesFolder": "C:\\Users\\%USERNAME%\\Pictures",
+    "MyMusicFolder": "C:\\Users\\%USERNAME%\\Music",
+    "MyVideoFolder": "C:\\Users\\%USERNAME%\\Videos",
+    "RecycleBinFolder": "C:\\$Recycle.Bin"
+}
+
+# Add a flag to control whether to use example paths
+USE_EXAMPLE_PATHS = False
+
 def create_section_header(text, count, color):
     """Create a section header with consistent styling"""
     header = QTreeWidgetItem([text, f"{count} items", "", ""])
@@ -82,6 +160,57 @@ def create_section_header(text, count, color):
     font.setBold(True)
     header.setFont(0, font)
     return header
+
+def resolve_directory_path(dir_id, directory_table=None):
+    """Resolve a directory ID to its final path by following the directory chain.
+    
+    Args:
+        dir_id: The directory ID to resolve (e.g., "INSTALLDIR")
+        directory_table: Optional directory table data from MSI. If not provided,
+                        will return the original directory ID.
+    
+    Returns:
+        The resolved directory path or the original dir_id if no resolution found
+    """
+    if not dir_id:
+        return "NULL"
+        
+    # If directory table is provided, use it for resolution
+    if directory_table:
+        # Create a mapping of directory IDs to their parent directories
+        dir_map = {}
+        for row in directory_table.get("rows", []):
+            if len(row) >= 2:
+                dir_map[row[0]] = row[1]
+        
+        # Follow the chain until we reach NULL or a directory not in the map
+        current_dir = dir_id
+        last_valid_dir = dir_id  # Keep track of the last valid directory
+        
+        while current_dir and current_dir != "NULL" and current_dir in dir_map:
+            last_valid_dir = current_dir  # Update last valid directory
+            current_dir = dir_map[current_dir]
+        
+        # If we hit NULL, return the last valid directory
+        if current_dir == "NULL":
+            return last_valid_dir
+        # If we hit a directory not in the map, return that directory
+        return current_dir
+    
+    # If no directory table provided, just return the original ID
+    return dir_id
+
+def get_directory_path(dir_id, directory_table=None):
+    """Get the directory path, either using the example path or the resolved directory"""
+    # First resolve the directory path
+    resolved_dir = resolve_directory_path(dir_id, directory_table)
+    
+    # Then check if we should use example paths
+    if USE_EXAMPLE_PATHS and resolved_dir in MSI_DIRECTORY_EXAMPLES:
+        return MSI_DIRECTORY_EXAMPLES[resolved_dir]
+    
+    # If not using example paths or no example exists, return the directory ID with brackets
+    return f"[{resolved_dir}]"  # Return the resolved directory keyword with brackets
 
 def analyze_installation_impact(parent):
     """Analyze the MSI package for installation impact"""
@@ -100,8 +229,9 @@ def analyze_installation_impact(parent):
     extension_entries = []
     env_var_entries = []
     
-    # Get component table for directory mapping
+    # Get component and directory tables for mapping
     component_table = next((table for table in parent.tables_data if table["name"] == "Component"), None)
+    directory_table = next((table for table in parent.tables_data if table["name"] == "Directory"), None)
     component_directories = {}
     
     if component_table:
@@ -193,12 +323,20 @@ def analyze_installation_impact(parent):
             display_name = filename.split("|")[0] if "|" in filename else filename
             install_path = filename.split("|")[1] if "|" in filename and filename.split("|")[1] else filename.split("|")[0]
             
+            risk = assess_file_risk(install_path, install_dir, directory_table)
+            
             file_item = QTreeWidgetItem([
                 "", 
-                f"[{install_dir}]\\{install_path}",
-                "",
+                f"{get_directory_path(install_dir, directory_table)}\\{install_path}",
+                risk["concern"],
                 f"Archived name: {display_name}"
             ])
+            
+            if risk["color"]:
+                for i in range(4):
+                    file_item.setForeground(i, risk["color"])
+                    file_item.setBackground(i, risk["color"].lighter(180))
+            
             files_header.addChild(file_item)
     
     if registry_entries:
@@ -206,17 +344,19 @@ def analyze_installation_impact(parent):
         parent.impact_tree.addTopLevelItem(registry_header)
         
         for reg_entry in registry_entries:
+            risk = assess_registry_risk(reg_entry["entry"], reg_entry["details"])
+            
             reg_item = QTreeWidgetItem([
                 reg_entry["type"],
                 reg_entry["entry"],
-                reg_entry["concern"],
+                risk["concern"],
                 reg_entry["details"]
             ])
             
-            if reg_entry["type"] == "Persistence Mechanism":
-                reg_item.setForeground(2, QColor("red"))
+            if risk["color"]:
                 for i in range(4):
-                    reg_item.setBackground(i, QColor(255, 235, 235))
+                    reg_item.setForeground(i, risk["color"])
+                    reg_item.setBackground(i, risk["color"].lighter(180))
             
             registry_header.addChild(reg_item)
     
@@ -225,17 +365,19 @@ def analyze_installation_impact(parent):
         parent.impact_tree.addTopLevelItem(services_header)
         
         for service in service_entries:
+            risk = assess_service_risk(service['Type'], service.get('StartType', ''), service["IsCritical"])
+            
             service_item = QTreeWidgetItem([
                 "",
                 f"{service['Name']} ({service['DisplayName']})",
-                "Auto-start system service" if service["IsCritical"] else "",
-                f"Type: {service['Type']}, Start: {service['StartType']}"
+                risk["concern"],
+                f"Type: {SERVICE_TYPES.get(service['Type'], service['Type'])}, Start: {SERVICE_START_TYPES.get(service['StartType'], service['StartType'])}"
             ])
             
-            if service["IsCritical"]:
-                service_item.setForeground(2, QColor("blue"))
+            if risk["color"]:
                 for i in range(4):
-                    service_item.setBackground(i, QColor(240, 245, 255))
+                    service_item.setForeground(i, risk["color"])
+                    service_item.setBackground(i, risk["color"].lighter(180))
             
             services_header.addChild(service_item)
     
@@ -248,9 +390,10 @@ def analyze_installation_impact(parent):
             display_name = shortcut_name.split("|")[0] if "|" in shortcut_name else shortcut_name
             install_path = shortcut_name.split("|")[0] + ("\\" + shortcut_name.split("|")[1] if "|" in shortcut_name and shortcut_name.split("|")[1] else "")
             
+            dir_path = get_directory_path(shortcut['Directory'], directory_table)
             shortcut_item = QTreeWidgetItem([
                 "",
-                f"[{shortcut['Directory']}]\\{install_path}",
+                f"{get_directory_path(shortcut['Directory'], directory_table)}\\{install_path}",
                 "",
                 f"Archived name: {display_name}"
             ])
@@ -277,7 +420,7 @@ def analyze_installation_impact(parent):
             install_dir = component_directories.get(ext["Component"], "UNKNOWN")
             ext_item = QTreeWidgetItem([
                 "",
-                f"[{install_dir}]",
+                get_directory_path(install_dir, directory_table),
                 "",
                 f"Extension: .{ext['Extension']}"
             ])
@@ -296,6 +439,121 @@ def analyze_installation_impact(parent):
 def normalize_registry_path(path):
     """Normalize registry path to use single backslashes"""
     return path.replace('\\\\', '\\') if path else ""
+
+def assess_file_risk(filepath, install_dir, directory_table=None):
+    """Assess the risk level of a file based on its path and characteristics"""
+    risk = {
+        "level": "Low",
+        "concern": "",
+        "color": None
+    }
+    
+    # Get the actual directory path
+    dir_path = get_directory_path(install_dir, directory_table)
+    
+    # Check critical directories
+    if install_dir in CRITICAL_DIRECTORIES:
+        risk["level"] = "High" if install_dir in ["SystemFolder", "System64Folder", "WindowsFolder", "StartupFolder"] else "Medium"
+        risk["concern"] = f"{CRITICAL_DIRECTORIES[install_dir]} ({dir_path})"
+        risk["color"] = QColor("red") if risk["level"] == "High" else QColor(255, 140, 0)  # Orange for Medium
+        return risk
+    
+    # Check file extension
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext in HIGH_RISK_EXTENSIONS:
+        risk["level"] = "High"
+        risk["concern"] = f"Rare script/executable type: {HIGH_RISK_EXTENSIONS[ext]}"
+        risk["color"] = QColor("red")
+        return risk
+    elif ext in MEDIUM_RISK_EXTENSIONS:
+        risk["level"] = "Medium"
+        risk["concern"] = f"Script file: {MEDIUM_RISK_EXTENSIONS[ext]}"
+        risk["color"] = QColor(255, 140, 0)  # Orange
+        return risk
+    
+    # Check suspicious patterns
+    if any(re.match(pattern, filepath, re.IGNORECASE) for pattern in SUSPICIOUS_FILE_PATTERNS):
+        if "system32" in filepath.lower() or "syswow64" in filepath.lower():
+            risk["level"] = "High"
+            risk["concern"] = "System file modification"
+            risk["color"] = QColor("red")
+        elif "startup" in filepath.lower():
+            risk["level"] = "High"
+            risk["concern"] = "Startup persistence"
+            risk["color"] = QColor("red")
+        elif "common files" in filepath.lower():
+            risk["level"] = "Medium"
+            risk["concern"] = "Common Files directory modification"
+            risk["color"] = QColor(255, 140, 0)  # Orange
+        else:
+            risk["level"] = "Medium"
+            risk["concern"] = "Suspicious file location"
+            risk["color"] = QColor(255, 140, 0)  # Orange
+    
+    return risk
+
+def assess_registry_risk(reg_path, value):
+    """Assess the risk level of a registry entry"""
+    risk = {
+        "level": "Low",
+        "concern": "",
+        "color": None
+    }
+    
+    # Check for persistence mechanisms (existing check)
+    if any(re.match(pattern, reg_path, re.IGNORECASE) for pattern in AUTORUN_PATTERNS):
+        risk["level"] = "High"
+        risk["concern"] = "Persistence Mechanism"
+        risk["color"] = QColor("red")
+        return risk
+    
+    # Check for suspicious patterns
+    if any(re.match(pattern, reg_path, re.IGNORECASE) for pattern in SUSPICIOUS_REGISTRY_PATTERNS):
+        if "browser helper" in reg_path.lower() or "shell extension" in reg_path.lower():
+            risk["level"] = "High"
+            risk["concern"] = "Browser/Shell Extension Modification"
+            risk["color"] = QColor("red")
+        elif "security" in reg_path.lower() or "policy" in reg_path.lower():
+            risk["level"] = "High"
+            risk["concern"] = "Security Policy Modification"
+            risk["color"] = QColor("red")
+        else:
+            risk["level"] = "Medium"
+            risk["concern"] = "Security-sensitive registry modification"
+            risk["color"] = QColor(255, 140, 0)  # Orange
+    
+    # Check for command execution in values (only for system executables)
+    if value and any(ext in value.lower() for ext in [".exe", ".dll", ".sys", ".drv"]):
+        if "system32" in value.lower() or "syswow64" in value.lower():
+            risk["level"] = "High"
+            risk["concern"] = "System executable in registry value"
+            risk["color"] = QColor("red")
+    
+    return risk
+
+def assess_service_risk(service_type, start_type, is_critical):
+    """Assess the risk level of a service"""
+    risk = {
+        "level": "Low",
+        "concern": "",
+        "color": None
+    }
+    
+    if is_critical:
+        risk["level"] = "High"
+        risk["concern"] = "Critical system service"
+        risk["color"] = QColor("red")
+    elif start_type == "0x00000002":  # Auto Start
+        if service_type in ["0x00000001", "0x00000002"]:  # Kernel or File System Driver
+            risk["level"] = "High"
+            risk["concern"] = "Auto-start system driver"
+            risk["color"] = QColor("red")
+        else:
+            risk["level"] = "Medium"
+            risk["concern"] = "Automatic startup service"
+            risk["color"] = QColor(255, 140, 0)  # Orange
+    
+    return risk
 
 def display_installation_impact(parent, output):
     """Display the results of the installation impact analysis"""
@@ -357,4 +615,48 @@ def display_installation_impact(parent, output):
         parent.impact_tree.expandAll()
         
     except Exception as e:
-        parent.handle_error("Display Error", f"Error displaying installation impact: {str(e)}") 
+        parent.handle_error("Display Error", f"Error displaying installation impact: {str(e)}")
+
+def toggle_example_paths(checked):
+    """Toggle between example paths and placeholders"""
+    global USE_EXAMPLE_PATHS
+    USE_EXAMPLE_PATHS = checked
+    # Get the parent window and refresh the analysis
+    parent = QApplication.activeWindow()
+    if parent and hasattr(parent, 'tables_data') and parent.tables_data:
+        analyze_installation_impact(parent)
+
+def create_footprint_tab(parent):
+    """Create the installation impact tab"""
+    footprint_tab = QWidget()
+    impact_layout = QVBoxLayout()
+    footprint_tab.setLayout(impact_layout)
+    
+    # Add description label
+    impact_description = QLabel("Analyze the MSI package to identify all system changes and artifacts that will be created during installation, including files, registry entries, services, and more.")
+    impact_description.setWordWrap(True)
+    impact_layout.addWidget(impact_description)
+    
+    # Add checkbox for example paths
+    checkbox_layout = QHBoxLayout()
+    example_paths_checkbox = QCheckBox("Show example paths")
+    example_paths_checkbox.setChecked(USE_EXAMPLE_PATHS)
+    example_paths_checkbox.stateChanged.connect(toggle_example_paths)
+    checkbox_layout.addWidget(example_paths_checkbox)
+    checkbox_layout.addStretch()
+    impact_layout.addLayout(checkbox_layout)
+    
+    # Tree view for installation impact details
+    parent.impact_tree = QTreeWidget()
+    parent.impact_tree.setColumnCount(4)
+    parent.impact_tree.setHeaderLabels(["Type", "Entry", "Concern", "Details"])
+    parent.impact_tree.setAlternatingRowColors(True)
+    parent.impact_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+    
+    # Enable context menu for impact tree
+    parent.impact_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+    parent.impact_tree.customContextMenuRequested.connect(parent.show_impact_context_menu)
+    
+    impact_layout.addWidget(parent.impact_tree, 1)
+    
+    return footprint_tab 
