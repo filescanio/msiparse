@@ -6,5 +6,10 @@ The implementation has been split into multiple modules for better maintainabili
 """
 
 from utils.gui.main_window import MSIParseGUI
+from utils.gui.footprint_tab import analyze_installation_impact, create_footprint_tab
 
-__all__ = ['MSIParseGUI'] 
+__all__ = [
+    'MSIParseGUI',
+    'analyze_installation_impact',
+    'create_footprint_tab'
+] 
