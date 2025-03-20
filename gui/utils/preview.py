@@ -58,4 +58,18 @@ def show_archive_preview_dialog(parent, archive_name, archive_path, group_icons,
         return True
     except Exception as e:
         _handle_error(parent, "Archive Preview Error", e)
+        return False
+
+def show_pdf_preview_dialog(parent, file_name, file_path):
+    """Show a PDF preview dialog for the given PDF file path"""
+    try:
+        # Import the dialog class
+        from dialogs.pdf import PDFPreviewDialog
+        PDFPreviewDialog(parent, file_name, file_path).exec_()
+        return True
+    except Exception as e:
+        _handle_error(parent, "PDF Preview Error", 
+                     f"Could not preview PDF: {str(e)}\n\n"
+                     f"To enable PDF preview, install PyMuPDF:\n"
+                     f"pip install PyMuPDF")
         return False 

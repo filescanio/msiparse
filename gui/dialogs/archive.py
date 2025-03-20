@@ -17,7 +17,7 @@ from threading import Lock
 from utils.common import (format_file_size, calculate_sha1, TableHelper, TreeHelper, 
                          FileIdentificationHelper)
 from utils.preview import (show_hex_view_dialog, show_text_preview_dialog, 
-                          show_image_preview_dialog)
+                          show_image_preview_dialog, show_pdf_preview_dialog)
 
 # Import our custom 7z-based archive handler
 from utils import archive7z
@@ -386,6 +386,12 @@ class ArchivePreviewDialog(QDialog):
             preview_image_action = QAction("Preview Image", self)
             preview_image_action.triggered.connect(lambda: self.show_image_preview(item))
             context_menu.addAction(preview_image_action)
+        # Check for PDFs first by MIME type
+        elif (group == "document" and mime_type and "pdf" in mime_type.lower()) or file_name.lower().endswith('.pdf'):
+            preview_pdf_action = QAction("Preview PDF", self)
+            preview_pdf_action.triggered.connect(lambda: self.show_pdf_preview(item))
+            context_menu.addAction(preview_pdf_action)
+        # Then check for other text-based files
         elif group in ["text", "code", "document"]:
             preview_text_action = QAction("Preview Text", self)
             preview_text_action.triggered.connect(lambda: self.show_text_preview(item))
@@ -466,6 +472,12 @@ class ArchivePreviewDialog(QDialog):
         file_path = self.extract_file(item)
         if file_path:
             show_text_preview_dialog(self, item.text(0), file_path)
+            
+    def show_pdf_preview(self, item):
+        """Show PDF preview dialog for the selected item"""
+        file_path = self.extract_file(item)
+        if file_path:
+            show_pdf_preview_dialog(self, item.text(0), file_path)
             
     def show_nested_archive_preview(self, item):
         self.progress_bar.setRange(0, 0)

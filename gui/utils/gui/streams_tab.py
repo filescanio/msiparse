@@ -11,7 +11,7 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QApplication
 
 from threads.identifystreams import IdentifyStreamsThread
-from utils.gui.preview import show_hex_view, show_text_preview, show_image_preview, show_archive_preview
+from utils.gui.preview import show_hex_view, show_text_preview, show_image_preview, show_archive_preview, show_pdf_preview
 from utils.gui.extraction import extract_single_stream
 from utils.common import format_file_size
 
@@ -248,7 +248,14 @@ def show_streams_context_menu(parent, position):
         preview_image_action = QAction("Preview Image", parent)
         preview_image_action.triggered.connect(lambda: show_image_preview(parent, stream_name))
         context_menu.addAction(preview_image_action)
+    
+    # Check for PDFs first by MIME type or filename extension
+    elif (group == "document" and mime_type and "pdf" in mime_type.lower()) or stream_name.lower().endswith('.pdf'):
+        preview_pdf_action = QAction("Preview PDF", parent)
+        preview_pdf_action.triggered.connect(lambda: show_pdf_preview(parent, stream_name))
+        context_menu.addAction(preview_pdf_action)
         
+    # Then check for other text-based files
     elif group in ("text", "code", "document"):
         preview_text_action = QAction("Preview Text", parent)
         preview_text_action.triggered.connect(lambda: show_text_preview(parent, stream_name))

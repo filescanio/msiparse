@@ -2,7 +2,9 @@
 Preview functionality for the MSI Parser GUI
 """
 
-from PyQt5.QtWidgets import QMessageBox
+import os
+from PyQt5.QtWidgets import QMessageBox, QApplication, QFileDialog
+from PyQt5.QtCore import Qt
 from utils.common import temp_directory
 from utils.gui.extraction import extract_file_to_temp
 from utils.gui.helpers import show_hex_view_dialog, show_text_preview_dialog, show_image_preview_dialog
@@ -40,20 +42,57 @@ def show_image_preview(parent, stream_name):
     show_preview(parent, stream_name, lambda p, name, path, mime: show_image_preview_dialog(p, name, path))
     
 def show_archive_preview(parent, stream_name):
-    """Show archive preview of a stream"""
+    """Show an archive preview dialog for the given stream"""
     if not parent.archive_support:
-        QMessageBox.warning(
-            parent,
-            "Archive Support Disabled",
-            "Archive preview functionality is disabled because the 7z command-line tool is not available.\n\n"
-            "To enable archive support, install 7-Zip and ensure it is in your system path."
-        )
+        QMessageBox.information(parent, "Preview Not Available", 
+                              "Archive preview is not available. Archive support is disabled.")
         return
         
-    with parent.status_progress(f"Extracting archive: {stream_name}..."):
-        def show_archive(parent, name, path, mime_type):
-            from dialogs.archive import ArchivePreviewDialog
-            parent.show_status(f"Opening archive preview: {name}")
-            ArchivePreviewDialog(parent, name, path, parent.group_icons).exec_()
+    # Extract the file to a temporary location first
+    file_path = None
+    try:
+        file_path = parent.extract_file_safe(stream_name, temp=True)
+        if not file_path:
+            parent.show_error("Preview Error", f"Failed to extract archive: {stream_name}", status_only=True)
+            return
             
-        show_preview(parent, stream_name, show_archive) 
+        # Call the archive preview dialog
+        from utils.preview import show_archive_preview_dialog
+        show_archive_preview_dialog(parent, stream_name, file_path, parent.group_icons, auto_identify=True)
+        
+    except Exception as e:
+        parent.show_error("Preview Error", e, status_only=True)
+        
+def show_pdf_preview(parent, stream_name):
+    """Show a PDF preview dialog for the given stream"""
+    # Extract the file to a temporary location first
+    file_path = None
+    try:
+        file_path = parent.extract_file_safe(stream_name, temp=True)
+        if not file_path:
+            parent.show_error("Preview Error", f"Failed to extract PDF: {stream_name}", status_only=True)
+            return
+            
+        # Call the PDF preview dialog
+        from utils.preview import show_pdf_preview_dialog
+        result = show_pdf_preview_dialog(parent, stream_name, file_path)
+        
+        if not result:
+            # If preview failed, try to open with default program
+            parent.show_warning("Preview Error", 
+                               "PDF preview failed. Would you like to extract and open with default viewer?",
+                               status_only=True)
+            if QMessageBox.question(parent, "Open with Default Viewer?", 
+                                  "Would you like to extract the PDF and open with your default PDF viewer?",
+                                  QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+                # Extract to user location and open
+                output_dir = parent.get_output_directory()
+                if output_dir:
+                    extracted_path = parent.extract_file_safe(stream_name, output_dir, temp=False)
+                    if extracted_path:
+                        from PyQt5.QtGui import QDesktopServices
+                        from PyQt5.QtCore import QUrl
+                        QDesktopServices.openUrl(QUrl.fromLocalFile(extracted_path))
+        
+    except Exception as e:
+        parent.show_error("Preview Error", e, status_only=True) 
