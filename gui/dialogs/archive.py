@@ -436,6 +436,19 @@ class ArchivePreviewDialog(QDialog):
             copy_hash_action.triggered.connect(lambda: self.copy_to_clipboard(sha1_hash))
             copy_menu.addAction(copy_hash_action)
         
+        # Add separator and "Copy Line" option that copies all columns
+        copy_menu.addSeparator()
+        copy_line_action = QAction("Copy Line", self)
+        file_size = item.text(3) if item.text(3) else ""
+        copy_line_action.triggered.connect(lambda: self.copy_to_clipboard("\t".join([
+            file_name,
+            group if group else "",
+            mime_type if mime_type else "",
+            file_size,
+            sha1_hash if sha1_hash != "Error calculating hash" else ""
+        ])))
+        copy_menu.addAction(copy_line_action)
+        
         context_menu.addMenu(copy_menu)
         context_menu.exec_(self.contents_tree.mapToGlobal(position))
         

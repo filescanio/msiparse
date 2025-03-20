@@ -305,6 +305,18 @@ def show_streams_context_menu(parent, position):
         copy_hash_action.triggered.connect(lambda: parent.copy_to_clipboard(sha1_hash))
         copy_menu.addAction(copy_hash_action)
     
+    # Add separator and "Copy Line" option that copies all columns
+    copy_menu.addSeparator()
+    copy_line_action = QAction("Copy Line", parent)
+    copy_line_action.triggered.connect(lambda: parent.copy_to_clipboard("\t".join([
+        stream_name,
+        group if group else "",
+        mime_type if mime_type else "",
+        item.text(3) if item.text(3) else "",  # File Size
+        sha1_hash if sha1_hash not in ("Error calculating hash", "") else ""
+    ])))
+    copy_menu.addAction(copy_line_action)
+    
     context_menu.addMenu(copy_menu)
     
     context_menu.exec_(parent.streams_tree.mapToGlobal(position))
