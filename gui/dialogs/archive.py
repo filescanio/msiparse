@@ -22,16 +22,9 @@ from utils.preview import (show_hex_view_dialog, show_text_preview_dialog,
 # Import our custom 7z-based archive handler
 from utils import archive7z
 
-# Try to import cabarchive for better CAB file support
-try:
-    import cabarchive
-    CABARCHIVE_AVAILABLE = True
-except (ImportError, TypeError):
-    CABARCHIVE_AVAILABLE = False
-
 class ArchivePreviewDialog(QDialog):
     """Dialog for displaying archive contents"""
-    def __init__(self, parent, archive_name, archive_path, group_icons, auto_identify=False):
+    def __init__(self, parent, archive_name, archive_path, group_icons):
         super().__init__(parent)
         self.parent = parent
         self.archive_name = archive_name
@@ -40,7 +33,6 @@ class ArchivePreviewDialog(QDialog):
         self.archive_entries = []
         self.temp_dir = None
         self.extracted_files = set()  # Track extracted files for cleanup
-        self.auto_identify = auto_identify  # Whether to auto-identify files
         
         # Initialize magika
         self.magika_client = magika.Magika()
@@ -253,10 +245,6 @@ class ArchivePreviewDialog(QDialog):
             
             # Auto-resize columns
             TableHelper.auto_resize_columns(self.contents_tree)
-            
-            # Auto-identify files only if enabled
-            if self.auto_identify:
-                self.auto_identify_files()
             
         except Exception as e:
             self.status_label.setText(f"Error: {str(e)}")
@@ -495,7 +483,7 @@ class ArchivePreviewDialog(QDialog):
             self.status_label.setText(f"Opening nested archive: {item.text(0)}")
             
             from utils.preview import show_archive_preview_dialog
-            show_archive_preview_dialog(self.parent, item.text(0), file_path, self.group_icons, self.auto_identify)
+            show_archive_preview_dialog(self.parent, item.text(0), file_path, self.group_icons)
             
         except Exception as e:
             self.progress_bar.setVisible(False)
@@ -553,80 +541,25 @@ class ArchivePreviewDialog(QDialog):
             if output_path in self.extracted_files and output_path_obj.exists():
                 return str(output_path_obj)
             
-            extraction_errors = []
-            
-            # Try to extract using our 7z handler
+            # Extract using 7z handler
             try:
                 result = self.archive_handler.extract_file(self.archive_path, full_path, str(output_path_obj))
                 if result:
                     self.extracted_files.add(output_path)
                     return result
+                else:
+                    error_msg = f"Failed to extract: {safe_filename}. 7z handler returned no result."
+                    self.status_label.setText(error_msg)
+                    return None
             except Exception as e:
-                extraction_errors.append(f"7z extraction ({full_path}): {str(e)}")
-            
-            # Try cabarchive if available and if the file might be a CAB file
-            if CABARCHIVE_AVAILABLE:
-                try:
-                    result = self._extract_with_cabarchive(safe_filename, str(output_path_obj))
-                    if result:
-                        return result
-                except Exception as e:
-                    extraction_errors.append(f"cabarchive ({safe_filename}): {str(e)}")
-            
-            # If extraction failed, log detailed errors
-            error_msg = f"Failed to extract: {safe_filename}. "
-            if extraction_errors:
-                error_details = f"Tried {len(extraction_errors)} extraction methods. Last error: {extraction_errors[-1]}"
-                self.status_label.setText(error_msg + error_details)
-            else:
-                self.status_label.setText(error_msg + "No extraction method succeeded.")
-                
-            return None
+                error_msg = f"Failed to extract: {safe_filename}. Error: {str(e)}"
+                self.status_label.setText(error_msg)
+                return None
             
         except Exception as e:
             error_msg = f"Error during extraction: {str(e)}"
             self.status_label.setText(error_msg)
             return None
-
-    def _extract_with_cabarchive(self, entry_name, output_path):
-        """Extract a file using python-cabarchive library"""
-        # First check if the file is a CAB file
-        try:
-            with open(self.archive_path, 'rb') as f:
-                try:
-                    cab = cabarchive.CabArchive(f.read())
-                except Exception as e:
-                    raise Exception(f"Not a valid CAB file or cabarchive could not parse it: {str(e)}")
-                
-                # Try exact match first
-                if entry_name in cab:
-                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    with open(output_path, 'wb') as out_f:
-                        out_f.write(cab[entry_name].buf)
-                    self.extracted_files.add(output_path)
-                    return output_path
-                
-                # Try case-insensitive match
-                for filename, cabfile in cab.items():
-                    if filename.lower() == entry_name.lower():
-                        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                        with open(output_path, 'wb') as out_f:
-                            out_f.write(cabfile.buf)
-                        self.extracted_files.add(output_path)
-                        return output_path
-                
-                # Try partial match as last resort
-                for filename, cabfile in cab.items():
-                    if entry_name in filename or filename in entry_name:
-                        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                        with open(output_path, 'wb') as out_f:
-                            out_f.write(cabfile.buf)
-                        self.extracted_files.add(output_path)
-                        return output_path
-                
-                raise Exception(f"File '{entry_name}' not found in CAB archive")
-        except Exception as e:
-            raise Exception(f"CAB extraction error: {str(e)}")
 
     def extract_file_to_user_location(self, item):
         full_path = item.data(0, Qt.UserRole)

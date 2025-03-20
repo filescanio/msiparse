@@ -58,7 +58,7 @@ def show_archive_preview(parent, stream_name):
             
         # Call the archive preview dialog
         from utils.preview import show_archive_preview_dialog
-        show_archive_preview_dialog(parent, stream_name, file_path, parent.group_icons, auto_identify=True)
+        show_archive_preview_dialog(parent, stream_name, file_path, parent.group_icons)
         
     except Exception as e:
         parent.show_error("Preview Error", e, status_only=True)

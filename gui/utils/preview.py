@@ -49,12 +49,12 @@ def show_image_preview_dialog(parent, file_name, file_path):
         _handle_error(parent, "Image Preview Error", e)
         return False
 
-def show_archive_preview_dialog(parent, archive_name, archive_path, group_icons, auto_identify=False):
+def show_archive_preview_dialog(parent, archive_name, archive_path, group_icons):
     """Show an archive preview dialog for the given archive path"""
     from dialogs.archive import ArchivePreviewDialog
     
     try:
-        ArchivePreviewDialog(parent, archive_name, archive_path, group_icons, auto_identify).exec_()
+        ArchivePreviewDialog(parent, archive_name, archive_path, group_icons).exec_()
         return True
     except Exception as e:
         _handle_error(parent, "Archive Preview Error", e)
