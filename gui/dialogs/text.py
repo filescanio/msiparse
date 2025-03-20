@@ -1,7 +1,10 @@
-from PyQt5.QtWidgets import QTextEdit, QVBoxLayout, QHBoxLayout, QComboBox, QLabel, QWidget
+from PyQt5.QtWidgets import QTextEdit, QVBoxLayout, QHBoxLayout, QComboBox, QLabel, QWidget, QPushButton
 from PyQt5.QtGui import QFont
+from PyQt5.QtCore import QUrl
+from PyQt5.QtGui import QDesktopServices
 from dialogs.base import BasePreviewDialog
 from utils.gui.syntax_highlighter import CodeSyntaxHighlighter, detect_language
+import base64
 
 class TextPreviewDialog(BasePreviewDialog):
     """Dialog for displaying text content in a read-only format with syntax highlighting"""
@@ -29,6 +32,16 @@ class TextPreviewDialog(BasePreviewDialog):
         self.language_selector.addItems(["auto-detect", "generic", "python", "javascript", "vbscript", "powershell", "xml", "html", "batch"])
         self.language_selector.currentTextChanged.connect(self.update_syntax_highlighting)
         language_layout.addWidget(self.language_selector)
+        
+        # Add CyberChef button
+        self.cyberchef_button = QPushButton("Open in CyberChef")
+        self.cyberchef_button.clicked.connect(self.open_in_cyberchef)
+        # Disable button if content is too large
+        if len(content.encode('utf-8')) > 8 * 1024:  # 8kB limit
+            self.cyberchef_button.setEnabled(False)
+            self.cyberchef_button.setToolTip("Content too large (>8kB)")
+        language_layout.addWidget(self.cyberchef_button)
+        
         language_layout.addStretch()
         
         container.addLayout(language_layout)
@@ -60,3 +73,18 @@ class TextPreviewDialog(BasePreviewDialog):
         # Create and apply syntax highlighter
         self.highlighter = CodeSyntaxHighlighter(self.text_edit.document(), language)
         self.set_status(f"Length: {len(self.content)} characters | Language: {language}")
+        
+    def open_in_cyberchef(self):
+        """Open the current text content in CyberChef"""
+        # Check size again to be safe
+        if len(self.content.encode('utf-8')) > 8 * 1024:  # 8kB limit
+            return
+            
+        # Base64 encode the text
+        encoded_text = base64.b64encode(self.content.encode('utf-8')).decode('ascii')
+        
+        # Construct the CyberChef URL
+        cyberchef_url = f"https://cyberchef.org/#input={encoded_text}"
+        
+        # Open URL in default browser
+        QDesktopServices.openUrl(QUrl(cyberchef_url))
