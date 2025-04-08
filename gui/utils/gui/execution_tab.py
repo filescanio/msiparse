@@ -139,16 +139,18 @@ def create_sequence_item(sequence, action, condition, impact, severity, phase_na
                     reg_item.setForeground(1, QColor("orange"))
                     item.addChild(reg_item)
         
-        # Check for service operations
-        service_installs = [row for table in parent.tables_data if table["name"] == "ServiceInstall" 
-                          for row in table.get("rows", [])]
-        for service_row in service_installs:
-            if len(service_row) >= 4:
-                service_name = service_row[1]
-                if service_name and service_name != "NULL":
-                    service_item = QTreeWidgetItem(["", f"[SVC] {service_name}", "", "", ""])
-                    service_item.setForeground(1, QColor("red"))
-                    item.addChild(service_item)
+        # Check for service operations - only show for relevant actions
+        service_actions = ["InstallServices", "StartServices", "StopServices", "DeleteServices", "RegisterServices", "UnregisterServices"]
+        if action in service_actions:
+            service_installs = [row for table in parent.tables_data if table["name"] == "ServiceInstall"
+                              for row in table.get("rows", [])]
+            for service_row in service_installs:
+                if len(service_row) >= 4:
+                    service_name = service_row[1]
+                    if service_name and service_name != "NULL":
+                        service_item = QTreeWidgetItem(["", f"[SVC] {service_name}", "", "", ""])
+                        service_item.setForeground(1, QColor("red"))
+                        item.addChild(service_item)
     
     parent.sequence_tree.addTopLevelItem(item)
 
@@ -196,7 +198,9 @@ def display_workflow_analysis(parent, target_widget='workflow'):
                 create_phase_header(phase_name, parent)
             
             # Evaluate the impact of the action
-            impact, severity = evaluate_action_impact(action)
+            # Note: display_workflow_analysis doesn't pre-build custom_actions, 
+            # so we pass an empty dict here. analyze_install_sequence is the main driver.
+            impact, severity = evaluate_action_impact(action, {})
             create_sequence_item(sequence, action, condition, impact, severity, current_phase, parent)
     
     except Exception as e:
@@ -317,8 +321,8 @@ def analyze_install_sequence(parent):
                 current_phase = phase_name
                 create_phase_header(phase_name, parent)
             
-            # Evaluate the impact of the action
-            impact, severity = evaluate_action_impact(action_name)
+            # Evaluate the impact of the action, passing known custom actions
+            impact, severity = evaluate_action_impact(action_name, custom_actions)
             create_sequence_item(sequence_num, action_name, condition, impact, severity, current_phase, parent)
     
     # Add system services installations directly in the tree
@@ -362,35 +366,39 @@ def analyze_install_sequence(parent):
     parent.show_status(f"Analyzed InstallExecuteSequence: {total_actions} actions")
 
 def evaluate_custom_action_impact(ca_type):
-    """Evaluate the impact of a custom action based on its type (backward compatibility)"""
+    """Evaluate the impact of a custom action based on its type"""
     try:
         ca_type_int = int(ca_type)
-        
-        # Base type is lower 6 bits (0x003F)
+
+        # Parse the custom action type integer based on MSI documentation:
+        # https://docs.microsoft.com/en-us/windows/win32/msi/custom-action-types
+
+        # Base type is lower 6 bits (0x003F) - Determines the core action (DLL, EXE, Script, etc.)
         base_type = ca_type_int & 0x003F
-        
-        # Source location is bits 7-8 (0x00C0)
+
+        # Source location is bits 7-8 (0x00C0) - Where the code/data is located (Binary table, File table, Property)
         source_type = (ca_type_int & 0x00C0) >> 6
-        
-        # Target location is bits 9-10 (0x0300)
+
+        # Target location is bits 9-10 (0x0300) - Where the result/output goes (often N/A)
         target_type = (ca_type_int & 0x0300) >> 8
-        
-        # Execution mode is bits 11-12 (0x0C00)
-        execution_mode = (ca_type_int & 0x0C00) >> 10
-        
-        # Check for no impersonation flag (bit 13 or 0x1000)
-        no_impersonation = (ca_type_int & 0x1000) != 0
-        
-        # Check for 64-bit flag (bit 14 or 0x2000)
+
+        # Execution options (bits 11-16+):
+        # - Bit 11 (0x0400): msidbCustomActionTypeInScript - Runs in execution script
+        # - Bit 12 (0x0800): msidbCustomActionTypeRollback - Has rollback action
+        # - Bit 13 (0x1000): msidbCustomActionTypeNoImpersonate - Runs in system context (HIGH RISK)
+        # - Bit 14 (0x2000): msidbCustomActionType64BitScript - Script is 64-bit
+        # - Bit 15 (0x4000): msidbCustomActionTypeHideTarget - Obscures target details
+        # - Bit 16 (0x8000): msidbCustomActionTypeTSAware - Terminal Services aware
+        # For simplicity, we check common high-risk flags directly
+        execution_options = ca_type_int & 0xFFC0 # Mask for execution flags
+
+        no_impersonation = (ca_type_int & 0x1000) != 0 # System context flag
+        is_deferred = (ca_type_int & 0x0400) != 0 # Runs in deferred script
+        is_rollback = (ca_type_int & 0x0800) != 0
         is_64bit = (ca_type_int & 0x2000) != 0
-        
-        # Check for hidden flag (bit 15 or 0x4000)
         is_hidden = (ca_type_int & 0x4000) != 0
-        
-        # Extended type information (bits 16-31, rarely used)
-        extended_type = (ca_type_int & 0xFFFF0000) >> 16
-        
-        # Determine base action type
+
+        # Determine base action type description
         base_type_desc = {
             1: "DLL function call",
             2: "EXE execution",
@@ -489,7 +497,7 @@ def evaluate_custom_action_impact(ca_type):
                 severity = "LOW"
         
         # Adjust severity for deferred execution with no impersonation (system context)
-        if execution_mode == 2 and no_impersonation:  # Deferred execution + no impersonation
+        if execution_options == 0x0400 and no_impersonation:  # Deferred execution + no impersonation
             if "with elevated privileges" not in primary_impact:
                 primary_impact += " with elevated privileges (deferred)"
             severity = "CRITICAL"
@@ -507,21 +515,37 @@ def evaluate_custom_action_impact(ca_type):
         return primary_impact, severity
         
     except (ValueError, TypeError):
-        return "Unknown custom action", "LOW"
+        # Fallback for unknown or invalid types - err on the side of caution
+        return "Unknown custom action type", "MEDIUM"
 
 def evaluate_standard_action_impact(action_name):
-    """Evaluate the impact of a standard action based on its name (backward compatibility)"""
-    return evaluate_action_impact(action_name)
+    # This function is now just a backward compatibility stub and less relevant
+    # as evaluate_action_impact handles both standard and custom actions directly.
+    # Consider removing if no longer used elsewhere.
+    return evaluate_action_impact(action_name, {})
 
-def evaluate_action_impact(action):
+def evaluate_action_impact(action, custom_actions):
+    """Evaluate the impact of an action, checking if it's custom or standard."""
+    
+    # 1. Check if it's a known custom action
+    if action in custom_actions:
+        ca_details = custom_actions[action]
+        ca_type = ca_details.get("Type", "")
+        if ca_type:
+            return evaluate_custom_action_impact(ca_type)
+        else:
+            # Custom action exists but has no type? Treat as potentially risky.
+            return "Custom Action (Type Unknown)", "MEDIUM-HIGH"
+
+    # 2. Check simple heuristics for non-standard names
     if action.startswith("_") and len(action) > 30 and any(c.isdigit() for c in action):
         return "Custom action with generated name", "MEDIUM"
-    
     if action.startswith("DIRCA_"):
         return "Directory customization action", "LOW"
     if action.startswith("ERRCA_"):
         return "Error handling action", "LOW"
     if action.startswith("AI_"):
+        # Heuristics for Advanced Installer actions
         if "DETECT" in action or "CHECK" in action:
             return "Advanced Installer detection action", "LOW"
         if "SET" in action or "WRITE" in action:
@@ -529,7 +553,8 @@ def evaluate_action_impact(action):
         if "INSTALL" in action or "EXECUTE" in action:
             return "Advanced Installer execution action", "MEDIUM"
         return "Advanced Installer custom action", "MEDIUM"
-    
+
+    # 3. Check against known standard actions
     high_impact = {
         "RemoveExistingProducts": "Removes existing products",
         "RegisterServices": "Installs services",
@@ -602,6 +627,7 @@ def evaluate_action_impact(action):
         "FileCost": "Calculates disk space",
         "CostFinalize": "Finalizes cost calculation",
         "InstallValidate": "Validates installation",
+        "InstallFinalize": "Finalizes installation script execution",
         "AppSearch": "Searches for applications",
         "LaunchConditions": "Checks prerequisites",
         "FindRelatedProducts": "Finds related products",
@@ -625,4 +651,5 @@ def evaluate_action_impact(action):
     if action == "ExecuteAction":
         return "Triggers Execute Sequence", "CRITICAL"
     
-    return "Standard MSI action", "LOW" 
+    # 4. Fallback for actions not identified as custom or standard
+    return "Uncategorized Action (Impact Not Assessed)", "MEDIUM" 
