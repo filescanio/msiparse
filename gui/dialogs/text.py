@@ -81,7 +81,7 @@ class TextPreviewDialog(BasePreviewDialog):
             return
             
         # Base64 encode the text
-        encoded_text = base64.b64encode(self.content.encode('utf-8')).decode('ascii')
+        encoded_text = base64.b64encode(self.content.encode('utf-8')).decode('ascii').rstrip('=')
         
         # Construct the CyberChef URL
         cyberchef_url = f"https://cyberchef.org/#input={encoded_text}"
