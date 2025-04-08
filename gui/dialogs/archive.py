@@ -15,7 +15,7 @@ from threading import Lock
 
 # Import common utilities
 from utils.common import (format_file_size, calculate_sha1, TableHelper, TreeHelper, 
-                         FileIdentificationHelper)
+                         FileIdentificationHelper, NumericTreeWidgetItem)
 from utils.preview import (show_hex_view_dialog, show_text_preview_dialog, 
                           show_image_preview_dialog, show_pdf_preview_dialog)
 
@@ -94,6 +94,9 @@ class ArchivePreviewDialog(QDialog):
         self.contents_tree = QTreeWidget()
         self.contents_tree.setHeaderLabels(["Name", "Group", "MIME Type", "Size", "SHA1 Hash"])
         self.contents_tree.setSelectionMode(QTreeWidget.SingleSelection)
+        
+        # Enable sorting
+        self.contents_tree.setSortingEnabled(True)
         
         # Enable context menu for contents tree
         self.contents_tree.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -259,20 +262,26 @@ class ArchivePreviewDialog(QDialog):
                 file_path_obj = Path(file_path)
                 if file_path_obj.exists() and file_path_obj.is_file():
                     group, mime_type = FileIdentificationHelper.identify_file_with_magika(file_path_obj, self.magika_client)
-                    size = format_file_size(os.path.getsize(file_path))
+                    # Get raw size and formatted size string
+                    raw_size = os.path.getsize(file_path)
+                    size_str = format_file_size(raw_size)
                     sha1 = calculate_sha1(file_path)
-                    return (item, group, mime_type, size, sha1)
+                    # Return raw_size along with size_str
+                    return (item, group, mime_type, size_str, raw_size, sha1)
         except Exception:
             pass
-        return (item, "", "application/octet-stream", "Unknown", "Error calculating hash")
+        # Return -1 for raw_size in error case
+        return (item, "", "application/octet-stream", "Unknown", -1, "Error calculating hash")
 
     def update_ui_from_queue(self):
         """Update UI with results from the queue"""
         try:
             while True:
-                item, group, mime_type, size, sha1 = self.result_queue.get_nowait()
+                # Unpack raw_size from the result
+                item, group, mime_type, size_str, raw_size, sha1 = self.result_queue.get_nowait()
                 with self.ui_lock:
-                    self.update_item_with_file_info(item, group, mime_type, None, size, sha1)
+                    # Pass raw_size to update function
+                    self.update_item_with_file_info(item, group, mime_type, None, size_str, raw_size, sha1)
                 self.result_queue.task_done()
         except Empty:
             pass
@@ -613,20 +622,29 @@ class ArchivePreviewDialog(QDialog):
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Failed to open browser: {str(e)}")
 
-    def update_item_with_file_info(self, item, group, mime_type, file_path, size_text=None, hash_text=None):
+    def update_item_with_file_info(self, item, group, mime_type, file_path, size_text=None, raw_size=None, hash_text=None):
         item.setText(1, group)
         item.setText(2, mime_type)
         
+        # Set formatted text for size column (display)
         if size_text:
             item.setText(3, size_text)
         elif file_path:
             try:
-                item.setText(3, format_file_size(os.path.getsize(file_path)))
+                # Calculate if not provided
+                if raw_size is None:
+                    raw_size = os.path.getsize(file_path)
+                item.setText(3, format_file_size(raw_size))
             except Exception:
                 item.setText(3, "Unknown")
+                raw_size = -1 # Ensure raw_size is -1 on error
         else:
             item.setText(3, "Unknown")
-            
+            raw_size = -1 # Ensure raw_size is -1 if no path or size_text
+
+        # Set raw size data for sorting
+        item.setData(3, Qt.UserRole, raw_size if raw_size is not None else -1)
+
         if hash_text:
             item.setText(4, hash_text)
         elif file_path:

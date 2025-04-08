@@ -13,10 +13,20 @@ from PyQt5.QtGui import QFont
 
 def format_file_size(size_bytes):
     """Format file size in a human-readable format"""
+    if size_bytes is None:
+        return "Unknown" # Handle None case
+    # Add a check for 0 bytes
+    if size_bytes == 0:
+        return "0 B"
     for unit in ['B', 'KB', 'MB', 'GB']:
-        if size_bytes < 1024:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024
+        if abs(size_bytes) < 1024.0: # Use abs for potentially negative sizes? Though unlikely.
+            # Show B without decimals, others with one decimal
+            if unit == 'B':
+                return f"{size_bytes} {unit}"
+            else:
+                return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024.0
+    # Handle TB case
     return f"{size_bytes:.1f} TB"
 
 def read_text_file_with_fallback(file_path):
@@ -123,9 +133,13 @@ class TreeHelper:
         # Add files
         if '' in structure:
             for file_name, size, full_path in structure['']:
-                file_item = QTreeWidgetItem(parent_item)
+                # Use NumericTreeWidgetItem instead of QTreeWidgetItem
+                file_item = NumericTreeWidgetItem(parent_item)
                 file_item.setText(0, file_name)
+                # Set formatted size for display
                 file_item.setText(3, format_file_size(size))
+                # Store raw size for sorting
+                file_item.setData(3, Qt.UserRole, size if size is not None else -1)
                 file_item.setText(1, "")  # Group
                 file_item.setText(2, "")  # MIME type
                 file_item.setText(4, "")  # SHA1 hash
@@ -317,3 +331,31 @@ class FileIdentificationHelper:
             return True
         except Exception:
             return False 
+
+# Add the new class here
+class NumericTreeWidgetItem(QTreeWidgetItem):
+    """Custom QTreeWidgetItem that sorts numerically for column 3 (File Size)."""
+    def __lt__(self, other):
+        column = self.treeWidget().sortColumn()
+        # Sort numerically if column is 3 (File Size)
+        if column == 3:
+            # Retrieve the raw size data stored using UserRole
+            my_data = self.data(column, Qt.UserRole)
+            other_data = other.data(column, Qt.UserRole)
+
+            # Handle cases where data might be missing or not numeric
+            try:
+                my_value = int(my_data) if my_data is not None else -1
+            except (ValueError, TypeError):
+                my_value = -1
+
+            try:
+                other_value = int(other_data) if other_data is not None else -1
+            except (ValueError, TypeError):
+                other_value = -1
+
+            # Perform numeric comparison
+            return my_value < other_value
+        else:
+            # Default string comparison for other columns
+            return super().__lt__(other) 

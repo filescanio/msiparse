@@ -7,9 +7,9 @@ import webbrowser
 import json
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QPushButton, QLabel, QFileDialog, QTabWidget, QTextEdit, 
-                            QTreeWidget, QMessageBox, QProgressBar,
+                            QTreeWidget, QMessageBox,
                             QSplitter, QTableWidget, QHeaderView, QListWidget,
-                            QApplication, QLineEdit, QShortcut, QTextBrowser, QCheckBox, QMenu, QAction)
+                            QApplication, QLineEdit, QShortcut, QCheckBox, QMenu, QAction)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeySequence
 
@@ -57,10 +57,7 @@ from utils.gui.footprint_tab import (
     create_footprint_tab
 )
 from utils.gui.execution_tab import (
-    display_workflow_analysis,
     analyze_install_sequence,
-    evaluate_custom_action_impact,
-    evaluate_standard_action_impact
 )
 from utils.gui.certificate_tab import (
     extract_certificates,
@@ -72,7 +69,6 @@ from utils.gui.certificate_tab import (
     get_name_as_text
 )
 from utils.gui.extraction import (
-    extract_stream_unified,
     extract_file_to_temp,
     extract_file_safe,
     extract_single_stream,
@@ -143,6 +139,9 @@ class MSIParseGUI(QMainWindow):
         main_layout = QVBoxLayout()
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
+        
+        # Enable drag and drop
+        self.setAcceptDrops(True)
         
         # File selection area
         file_layout = QHBoxLayout()
@@ -225,7 +224,7 @@ class MSIParseGUI(QMainWindow):
         except Exception as e:
             # Log error but don't disrupt the UI
             print(f"Error focusing filter: {str(e)}")
-            self.statusBar().showMessage(f"Error focusing on filter field", 3000)
+            self.statusBar().showMessage("Error focusing on filter field", 3000)
         
     def update_button_states(self):
         """Update the enabled state of buttons based on current state"""
@@ -263,26 +262,64 @@ class MSIParseGUI(QMainWindow):
             self, "Select MSI File", "", "MSI Files (*.msi);;All Files (*)"
         )
         if file_path:
-            self.msi_file_path = file_path
-            self.file_label.setText(os.path.basename(file_path))
-            self.update_button_states()
-            self.statusBar().showMessage(f"Selected MSI file: {file_path}")
+            self.load_msi_file(file_path)
             
-            # Clear certificate status and details
-            self.cert_details.clear()
+    def load_msi_file(self, file_path):
+        """Load and process the selected MSI file"""
+        self.msi_file_path = file_path
+        self.file_label.setText(os.path.basename(file_path))
+        self.update_button_states()
+        self.statusBar().showMessage(f"Selected MSI file: {file_path}")
+        
+        # Clear previous data if any
+        self.clear_previous_data()
+        
+        # Auto-run metadata, streams, and tables when file is selected
+        self.get_metadata()
+        self.list_streams()
+        self.list_tables()
+        
+        # Auto-analyze certificates when file is selected (no dialogs)
+        self.analyze_certificate(show_dialogs=False)
+
+    def clear_previous_data(self):
+        """Clear data from previous file analysis"""
+        # Clear certificate status and details
+        self.cert_details.clear()
+        
+        # Reset extracted certificate files
+        if hasattr(self, 'extracted_cert_files'):
+            delattr(self, 'extracted_cert_files')
             
-            # Reset extracted certificate files
-            if hasattr(self, 'extracted_cert_files'):
-                delattr(self, 'extracted_cert_files')
+        # Clear tables tab
+        self.table_list.clear()
+        self.table_content.clear()
+        self.table_content.setRowCount(0)
+        self.table_content.setColumnCount(0)
+        self.tables_data = None
+        
+        # Clear streams tab
+        self.streams_tree.clear()
+        self.streams_data = []
+        self.streams_filter.clear() # Clear filter
+        
+        # Clear metadata tab
+        self.metadata_text.clear()
+        
+        # Clear execution tab
+        self.sequence_tree.clear()
+        
+        # Clear footprint tab
+        if hasattr(self, 'impact_tree'):
+            self.impact_tree.clear()
             
-            # Auto-run metadata, streams, and tables when file is selected
-            self.get_metadata()
-            self.list_streams()
-            self.list_tables()
+        # Reset original order flag for streams
+        self.original_order = True
+        if hasattr(self, 'reset_order_button'):
+            self.reset_order_button.setEnabled(False)
             
-            # Auto-analyze certificates when file is selected (no dialogs)
-            self.analyze_certificate(show_dialogs=False)
-            
+        self.update_button_states() # Update button states after clearing
+
     def stream_selected(self, item):
         """Handle single item click in the streams tree"""
         try:
@@ -946,4 +983,32 @@ class MSIParseGUI(QMainWindow):
 
     def create_help_tab(self):
         """Create the help tab"""
-        return create_help_tab() 
+        return create_help_tab()
+
+    # --- Drag and Drop Event Handlers ---
+
+    def dragEnterEvent(self, event):
+        """Handle drag enter event"""
+        mime_data = event.mimeData()
+        if mime_data.hasUrls():
+            # Check if any URL is a local file
+            for url in mime_data.urls():
+                if url.isLocalFile():
+                    event.acceptProposedAction()
+                    return
+        event.ignore() # Ignore non-file drags
+
+    def dropEvent(self, event):
+        """Handle drop event"""
+        mime_data = event.mimeData()
+        if mime_data.hasUrls():
+            for url in mime_data.urls():
+                if url.isLocalFile():
+                    file_path = url.toLocalFile()
+                    # Attempt to load any dropped file
+                    self.load_msi_file(file_path)
+                    event.acceptProposedAction()
+                    return # Process only the first dropped file
+        event.ignore()
+
+    # --- End Drag and Drop --- 

@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import QApplication
 from threads.identifystreams import IdentifyStreamsThread
 from utils.gui.preview import show_hex_view, show_text_preview, show_image_preview, show_archive_preview, show_pdf_preview
 from utils.gui.extraction import extract_single_stream
-from utils.common import format_file_size
+from utils.common import NumericTreeWidgetItem, format_file_size
 
 def list_streams(parent):
     """List MSI streams"""
@@ -36,8 +36,9 @@ def display_streams(parent, output):
         parent.streams_tree.clear()
         
         for stream in streams:
-            item = QTreeWidgetItem([stream, "", "", "", ""])
+            item = NumericTreeWidgetItem([stream, "", "", "", ""])
             item.setIcon(0, parent.group_icons['unknown'])
+            item.setData(3, Qt.UserRole, -1)
             parent.streams_tree.addTopLevelItem(item)
             
         parent.streams_tree.setSortingEnabled(True)
@@ -60,7 +61,7 @@ def identify_streams(parent):
     parent.active_threads.append(thread)
     
     thread.progress_updated.connect(lambda current, total: update_identify_progress(parent, current, total))
-    thread.stream_identified.connect(lambda name, group, mime, size, hash: update_stream_file_type(parent, name, group, mime, size, hash))
+    thread.stream_identified.connect(lambda name, group, mime, size_str, size_bytes, hash: update_stream_file_type(parent, name, group, mime, size_str, size_bytes, hash))
     thread.finished.connect(lambda: identify_streams_finished(parent, thread, temp_dir))
     thread.error_occurred.connect(lambda msg: parent.handle_error("Identification Error", msg))
     
@@ -72,7 +73,7 @@ def update_identify_progress(parent, current, total):
     parent.statusBar().showMessage(f"Identifying stream types: {current}/{total} ({percentage:.1f}%)")
     QApplication.processEvents()
 
-def update_stream_file_type(parent, stream_name, group, mime_type, file_size, sha1_hash):
+def update_stream_file_type(parent, stream_name, group, mime_type, file_size_str, raw_file_size, sha1_hash):
     """Update the group, MIME type, size, and SHA1 hash for a stream in the tree"""
     try:
         was_sorting_enabled = parent.streams_tree.isSortingEnabled()
@@ -84,30 +85,13 @@ def update_stream_file_type(parent, stream_name, group, mime_type, file_size, sh
             if item.text(0) == stream_name:
                 item.setText(1, group)
                 item.setText(2, mime_type)
-                item.setText(3, file_size)
+                item.setText(3, file_size_str)
                 item.setText(4, sha1_hash)
                 
                 set_icon_for_group(parent, item, group)
                 
-                if file_size != "Unknown":
-                    try:
-                        # Convert the formatted size back to bytes for sorting
-                        size_parts = file_size.split()
-                        if len(size_parts) == 2:
-                            value = float(size_parts[0])
-                            unit = size_parts[1]
-                            multiplier = {
-                                'B': 1,
-                                'KB': 1024,
-                                'MB': 1024 * 1024,
-                                'GB': 1024 * 1024 * 1024,
-                                'TB': 1024 * 1024 * 1024 * 1024
-                            }.get(unit, 0)
-                            size_value = value * multiplier
-                            item.setData(3, Qt.UserRole, size_value)
-                    except (ValueError, IndexError):
-                        pass
-                        
+                item.setData(3, Qt.UserRole, raw_file_size if raw_file_size is not None else -1)
+                
                 if current_filter:
                     match_found = any(current_filter in item.text(col).lower() 
                                     for col in range(parent.streams_tree.columnCount()))
@@ -193,16 +177,15 @@ def reset_to_original_order(parent):
     visible_count = 0
     
     for stream in parent.streams_data:
-        group, mime_type, file_size, sha1_hash, size_value = stream_data.get(stream, ("", "", "", "", None))
+        group, mime_type, file_size_str, sha1_hash, size_value = stream_data.get(stream, ("", "", "", "", -1))
         
-        item = QTreeWidgetItem([stream, group, mime_type, file_size, sha1_hash])
+        item = NumericTreeWidgetItem([stream, group, mime_type, file_size_str, sha1_hash])
         
         if sha1_hash and sha1_hash not in ("Error calculating hash", ""):
             item.setFont(4, mono_font)
         
-        if size_value is not None:
-            item.setData(3, Qt.UserRole, size_value)
-            
+        item.setData(3, Qt.UserRole, size_value if size_value is not None else -1)
+        
         set_icon_for_group(parent, item, group)
         parent.streams_tree.addTopLevelItem(item)
         

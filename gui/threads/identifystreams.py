@@ -11,7 +11,7 @@ import os
 class IdentifyStreamsWorker(QObject):
     """Worker object for identifying stream file types"""
     progress_updated = pyqtSignal(int, int)  # current, total
-    stream_identified = pyqtSignal(str, str, str, str, str)  # stream_name, group, mime_type, file_size, sha1_hash
+    stream_identified = pyqtSignal(str, str, str, str, int, str)  # stream_name, group, mime_type, file_size_str, file_size_bytes, sha1_hash
     error_occurred = pyqtSignal(str)
     finished = pyqtSignal()
     
@@ -84,7 +84,7 @@ class IdentifyStreamsWorker(QObject):
                         mime_type = "application/octet-stream"
 
                     # Emit results through signals
-                    self.stream_identified.emit(stream_name, group, mime_type, file_size_str, sha1_hash)
+                    self.stream_identified.emit(stream_name, group, mime_type, file_size_str, file_size, sha1_hash)
                     self.progress_updated.emit(i + 1, total_streams)
 
                 except Exception as e:
@@ -103,7 +103,7 @@ class IdentifyStreamsThread(QThread):
     """Thread for running the identify streams worker"""
     # Define signals in the thread class
     progress_updated = pyqtSignal(int, int)  # current, total
-    stream_identified = pyqtSignal(str, str, str, str, str)  # stream_name, group, mime_type, file_size, sha1_hash
+    stream_identified = pyqtSignal(str, str, str, str, int, str)  # stream_name, group, mime_type, file_size_str, file_size_bytes, sha1_hash
     error_occurred = pyqtSignal(str)
     finished = pyqtSignal()
 
