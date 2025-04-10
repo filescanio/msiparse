@@ -3,12 +3,11 @@ Helper functions for the MSI Parser GUI
 """
 
 import os
-import subprocess
 import contextlib
-import sys
-from PyQt5.QtWidgets import QMessageBox, QDialog, QVBoxLayout, QTextEdit, QPushButton, QFileDialog, QPlainTextEdit, QSizePolicy
-from PyQt5.QtGui import QIcon, QPixmap, QFontDatabase
+from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
+from utils.subprocess_utils import run_subprocess
 
 def show_text_preview_dialog(parent, file_name, file_path, mime_type=None):
     """Show a text preview dialog for the given file path with optional MIME type
@@ -204,12 +203,7 @@ def run_command_safe(parent, command, success_message=None):
     """Run a command with proper error handling and progress indication"""
     try:
         with status_progress(parent, parent.STATUS_MESSAGES['running_command']):
-            # Define creation flags for Windows
-            creationflags = 0
-            if sys.platform == "win32":
-                creationflags = subprocess.CREATE_NO_WINDOW
-
-            result = subprocess.run(command, capture_output=True, text=True, check=True, creationflags=creationflags)
+            result = run_subprocess(command, capture_output=True, text=True, check=True)
             if success_message:
                 parent.show_status(success_message)
             return result.stdout

@@ -1,6 +1,6 @@
 import subprocess
 from PyQt5.QtCore import QThread, pyqtSignal
-import sys
+from utils.subprocess_utils import run_subprocess
 
 class CommandThread(QThread):
     """Thread for running msiparse commands without freezing the GUI.
@@ -18,21 +18,20 @@ class CommandThread(QThread):
         
     def run(self):
         try:
-            # Define creation flags for Windows
-            creationflags = 0
-            if sys.platform == "win32":
-                creationflags = subprocess.CREATE_NO_WINDOW
-
-            result = subprocess.run(
+            # Use the utility function
+            result = run_subprocess(
                 self.command,
                 capture_output=True,
                 text=True,
                 check=True,
-                creationflags=creationflags
             )
             self.output_ready.emit(result.stdout)
             self.finished_successfully.emit()
         except subprocess.CalledProcessError as e:
-            self.error_occurred.emit(f"Command failed with error: {e.stderr}")
+            # Check if stderr exists before trying to access it
+            error_message = f"Command failed with exit code {e.returncode}"
+            if e.stderr:
+                error_message += f": {e.stderr}"
+            self.error_occurred.emit(error_message)
         except Exception as e:
             self.error_occurred.emit(f"Error: {str(e)}")

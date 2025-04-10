@@ -9,6 +9,7 @@ import sys
 from PyQt5.QtWidgets import QMessageBox
 
 from utils.common import temp_directory
+from utils.subprocess_utils import run_subprocess
 
 # Import for certificate analysis
 try:
@@ -115,20 +116,15 @@ def analyze_certificate(parent, show_dialogs=False):
                     parent.msi_file_path,
                     temp_dir
                 ]
-                
-                # Define creation flags for Windows
-                creationflags = 0
-                if sys.platform == "win32":
-                    creationflags = subprocess.CREATE_NO_WINDOW
-                
-                result = subprocess.run(
+
+                # Use the utility function
+                result = run_subprocess(
                     command,
                     capture_output=True,
                     text=True,
                     check=True,
-                    creationflags=creationflags
                 )
-                
+
                 output = result.stdout
                 
                 # Process the output
