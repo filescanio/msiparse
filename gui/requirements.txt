@@ -8,3 +8,4 @@ asn1crypto>=1.5.1
 markdown>=3.7
 # For PDF rendering
 PyMuPDF>=1.25.5
+PyInstaller>=6.12.0

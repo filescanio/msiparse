@@ -1,4 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_data_files
+
+# Collect Magika models explicitly
+magika_datas = collect_data_files('magika')
 
 a = Analysis(
     ['__main__.py'],
@@ -8,7 +12,7 @@ a = Analysis(
         ('resources', 'resources'),
         ('help_dialog_template.md', '.'),
         # (magika_models_path, 'magika/models') # Removed explicit Magika models, relying on hooks
-        ], # Relying on hooks for Magika models
+        ] + magika_datas, # Add Magika data files here
     hiddenimports=[], # Removed, relying on analysis
     hooksconfig={},
     runtime_hooks=['pyi_rth_onnxruntime.py'], # Keep the essential runtime hook
