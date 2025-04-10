@@ -1,4 +1,4 @@
-name: Build Rust on Windows with GNU Toolchain
+name: Build msiparse via Rust
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   release:
-    name: Release - ${{ matrix.platform.release_for }}
+    name: Release - ${{ matrix.platform.target }}
     strategy:
       matrix:
         platform:

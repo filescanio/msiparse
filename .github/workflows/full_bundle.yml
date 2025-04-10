@@ -1,0 +1,60 @@
+name: Build both CLI and GUI using the build.py script
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  release:
+    name: Release - ${{ matrix.platform.target }} 
+    strategy:
+      matrix:
+        platform:
+          - os_name: Windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            skip_tests: true
+          - os_name: macOS-x86_64
+            os: macOS-latest
+            target: x86_64-apple-darwin
+            skip_tests: true
+          - os_name: Linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.platform.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Install Rust stable toolchain
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          # No specific targets needed as we rely on native build
+
+      # Set up Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x' # Or specify a needed version
+
+      # Install Python dependencies (for build script and GUI)
+      - name: Install Python dependencies
+        run: pip install -r gui/requirements.txt pyinstaller
+
+      # Run the unified build script (no arguments needed)
+      - name: Run build script
+        run: python build.py
+
+      # Upload the artifacts prepared by build.py
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: msiparse-${{ matrix.platform.target }}
+          path: artifact/* # Upload contents of the artifact directory
