@@ -6,6 +6,7 @@ import platform
 import urllib.request
 import tarfile
 import sys
+import argparse
 
 # --- Configuration ---
 RUST_PROJECT_NAME = "msiparse"
@@ -17,9 +18,13 @@ ARTIFACT_DIR = "artifact"
 WIN_7Z_URL = "https://www.7-zip.org/a/7zr.exe"
 WIN_7Z_EXE = "7z.exe"
 LINUX_7Z_URL = "https://www.7-zip.org/a/7z2409-linux-x64.tar.xz"
-LINUX_7Z_ARCHIVE = "7z.tar.xz"
+LINUX_7Z_ARCHIVE = "7z-linux.tar.xz"
 LINUX_7Z_EXE_IN_ARCHIVE = "7zzs" # Common name for static build in archive
-LINUX_7Z_EXE = "7z"
+LINUX_7Z_EXE = "7zz" # Standardize to 7zz
+MACOS_7Z_URL = "https://www.7-zip.org/a/7z2409-mac.tar.xz"
+MACOS_7Z_ARCHIVE = "7z-mac.tar.xz"
+MACOS_7Z_EXE_IN_ARCHIVE = "7zz" # Binary name in the mac archive
+MACOS_7Z_EXE = "7zz" # Standardize to 7zz
 # ---------------------
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -78,23 +83,28 @@ def prepare_artifacts():
         sys.exit(1)
 
     # Move Python GUI distribution
-    # IMPORTANT: Adjust pyinstaller_dist_path if your spec file outputs differently
-    #            (e.g., a single file instead of a directory, or a different name)
-    pyinstaller_dist_path = os.path.join(ROOT_DIR, PYTHON_GUI_DIR, "dist", PYTHON_DIST_NAME)
-    pyinstaller_dest_path = os.path.join(ARTIFACT_PATH, PYTHON_DIST_NAME)
+    pyinstaller_dist_dir = os.path.join(ROOT_DIR, PYTHON_GUI_DIR, "dist")
+    pyinstaller_dist_name = None
 
-    if os.path.isdir(pyinstaller_dist_path): # Assuming one-dir build
-         print(f"Moving Python GUI dist: {pyinstaller_dist_path} -> {pyinstaller_dest_path}")
-         shutil.move(pyinstaller_dist_path, pyinstaller_dest_path)
-    elif os.path.isfile(pyinstaller_dist_path + ".exe"): # Check for one-file exe on Windows
-         print(f"Moving Python GUI exe: {pyinstaller_dist_path}.exe -> {pyinstaller_dest_path}.exe")
-         shutil.move(pyinstaller_dist_path + ".exe", pyinstaller_dest_path + ".exe")
-    elif os.path.isfile(pyinstaller_dist_path): # Check for one-file exe on Linux/macOS
-         print(f"Moving Python GUI executable: {pyinstaller_dist_path} -> {pyinstaller_dest_path}")
-         shutil.move(pyinstaller_dist_path, pyinstaller_dest_path)
+    # Find the actual output name from PyInstaller (could be dir or file)
+    if os.path.isdir(pyinstaller_dist_dir):
+        items = os.listdir(pyinstaller_dist_dir)
+        if items: # Check if dist directory is not empty
+             # Prefer directory if it exists and matches expected name, otherwise take first item
+             if PYTHON_DIST_NAME in items and os.path.isdir(os.path.join(pyinstaller_dist_dir, PYTHON_DIST_NAME)):
+                  pyinstaller_dist_name = PYTHON_DIST_NAME
+             else:
+                  # Might be a single file executable or differently named directory
+                  pyinstaller_dist_name = items[0]
+
+    if pyinstaller_dist_name:
+        pyinstaller_src_path = os.path.join(pyinstaller_dist_dir, pyinstaller_dist_name)
+        pyinstaller_dest_path = os.path.join(ARTIFACT_PATH, pyinstaller_dist_name)
+        print(f"Moving Python GUI distribution: {pyinstaller_src_path} -> {pyinstaller_dest_path}")
+        shutil.move(pyinstaller_src_path, pyinstaller_dest_path)
     else:
-         print(f"Error: Python GUI distribution not found at {pyinstaller_dist_path} (checked dir, .exe, and file)", file=sys.stderr)
-         sys.exit(1)
+        print(f"Error: Python GUI distribution not found in {pyinstaller_dist_dir}", file=sys.stderr)
+        sys.exit(1)
 
     print("--- Artifact Preparation Done ---")
 
@@ -103,63 +113,132 @@ def download_7z():
     """Downloads and prepares the 7-Zip executable based on the OS."""
     print("\n--- Downloading 7-Zip ---")
     system = platform.system()
+    success = False # Track overall success
 
     try:
         if system == "Windows":
             dest_path = os.path.join(ARTIFACT_PATH, WIN_7Z_EXE)
-            print(f"Downloading {WIN_7Z_URL} to {dest_path}...")
             urllib.request.urlretrieve(WIN_7Z_URL, dest_path)
-            print(f"{WIN_7Z_EXE} downloaded.")
+            success = True
 
-        elif system == "Linux":
-            archive_path = os.path.join(ARTIFACT_PATH, LINUX_7Z_ARCHIVE)
-            dest_exe_path = os.path.join(ARTIFACT_PATH, LINUX_7Z_EXE)
-            print(f"Downloading {LINUX_7Z_URL} to {archive_path}...")
-            urllib.request.urlretrieve(LINUX_7Z_URL, archive_path)
-            print(f"Extracting {LINUX_7Z_ARCHIVE}...")
+        elif system in ("Linux", "Darwin"): # Handle Linux and macOS together
+            if system == "Linux":
+                archive_url = LINUX_7Z_URL
+                archive_filename = LINUX_7Z_ARCHIVE
+                exe_in_archive = LINUX_7Z_EXE_IN_ARCHIVE
+                final_exe_name = LINUX_7Z_EXE
+            else: # system == "Darwin"
+                archive_url = MACOS_7Z_URL
+                archive_filename = MACOS_7Z_ARCHIVE
+                exe_in_archive = MACOS_7Z_EXE_IN_ARCHIVE
+                final_exe_name = MACOS_7Z_EXE
+
+            archive_path = os.path.join(ARTIFACT_PATH, archive_filename)
+            dest_exe_path = os.path.join(ARTIFACT_PATH, final_exe_name)
+
+            urllib.request.urlretrieve(archive_url, archive_path)
+
             with tarfile.open(archive_path, "r:xz") as tar:
-                # Extract only the target executable to avoid clutter
                 extracted = False
+                # Attempt direct extraction of the target executable
                 for member in tar.getmembers():
-                    if os.path.basename(member.name) == LINUX_7Z_EXE_IN_ARCHIVE:
-                         # Extract to artifact dir with the final desired name
-                         member.name = LINUX_7Z_EXE
-                         tar.extract(member, path=ARTIFACT_PATH)
-                         print(f"Extracted {LINUX_7Z_EXE} to {ARTIFACT_PATH}")
-                         extracted = True
-                         break # Found what we needed
+                    if os.path.basename(member.name) == exe_in_archive:
+                        member.name = final_exe_name # Rename on extraction
+                        tar.extract(member, path=ARTIFACT_PATH)
+                        extracted = True
+                        break
+
+                # Fallback: Generic extraction if direct failed
                 if not extracted:
-                     print(f"Error: Could not find {LINUX_7Z_EXE_IN_ARCHIVE} in {LINUX_7Z_ARCHIVE}", file=sys.stderr)
-                     # Attempt generic extraction as fallback
-                     print(f"Attempting generic extraction to {ARTIFACT_PATH}")
-                     tar.extractall(path=ARTIFACT_PATH)
+                    print(f"Could not find {exe_in_archive} directly in archive, attempting generic extraction...")
+                    tar.extractall(path=ARTIFACT_PATH)
+                    found_generic = False
+                    # Search for the executable in extracted files/dirs
+                    for item in os.listdir(ARTIFACT_PATH):
+                        item_path = os.path.join(ARTIFACT_PATH, item)
+                        potential_exe_path = None
 
+                        if os.path.isfile(item_path) and item == exe_in_archive:
+                            potential_exe_path = item_path
+                        elif os.path.isdir(item_path):
+                             # Check inside a potential subdirectory
+                             path_in_subdir = os.path.join(item_path, exe_in_archive)
+                             if os.path.isfile(path_in_subdir):
+                                 potential_exe_path = path_in_subdir
 
-            print(f"Removing archive {archive_path}...")
+                        if potential_exe_path:
+                             # Move/rename to the final destination path
+                             if potential_exe_path != dest_exe_path:
+                                 shutil.move(potential_exe_path, dest_exe_path)
+                             else:
+                                 # Already in the right place, possibly renamed if item==exe_in_archive
+                                 pass
+                             found_generic = True
+
+                             # Attempt cleanup of extracted dir if applicable
+                             if os.path.isdir(item_path):
+                                 try:
+                                     shutil.rmtree(item_path)
+                                 except OSError as e:
+                                     print(f"Warning: Could not remove temporary extraction dir {item_path}: {e}", file=sys.stderr)
+                             break # Found it, stop searching
+
+                    if not found_generic:
+                        print(f"Warning: Could not find {exe_in_archive} even after generic extraction.", file=sys.stderr)
+                    else:
+                        extracted = True # Mark success if found via fallback
+
+            # Cleanup and set permissions
             os.remove(archive_path)
-            # Ensure the extracted binary is executable
-            if os.path.exists(dest_exe_path):
-                 os.chmod(dest_exe_path, 0o755)
-                 print(f"Set {dest_exe_path} as executable.")
-            else:
-                 print(f"Error: Expected 7z executable not found at {dest_exe_path} after extraction.", file=sys.stderr)
-
+            if extracted and os.path.exists(dest_exe_path):
+                os.chmod(dest_exe_path, 0o755)
+                success = True
+            elif extracted:
+                # This case means extraction happened but the final file isn't there
+                print(f"Error: Expected 7z executable not found at {dest_exe_path} after extraction steps.", file=sys.stderr)
 
         else:
             print(f"Warning: Unsupported OS for 7z download: {system}. Skipping.")
 
     except Exception as e:
         print(f"Error downloading or processing 7-Zip: {e}", file=sys.stderr)
-        # Decide if this should be fatal? For now, just warn.
+        # Optional: Decide if lack of 7z should halt the build
         # sys.exit(1)
+
+    # Print a summary status message
+    if success:
+        print(f"7-Zip prepared successfully for {system}.")
+    else:
+        print(f"7-Zip preparation failed or was skipped for {system}.")
 
     print("--- 7-Zip Download Done ---")
 
 
 if __name__ == "__main__":
+    # --- Argument Parsing ---
+    parser = argparse.ArgumentParser(description="Build script for msiparse CLI and GUI.")
+    parser.add_argument(
+        "--cli-only",
+        action="store_true",
+        help="Build only the Rust CLI application."
+    )
+    args = parser.parse_args()
+    # ------------------------
+
     build_rust()
-    build_python_gui()
-    prepare_artifacts()
-    download_7z()
-    print("\nBuild process completed.")
-    print(f"Artifacts are available in: {ARTIFACT_PATH}") 
+
+    if not args.cli_only:
+        # These steps are only needed for the full bundle
+        build_python_gui()
+        prepare_artifacts()
+        download_7z()
+        print("Full build process completed.")
+        print(f"Artifacts are available in: {ARTIFACT_PATH}")
+    else:
+        # Only the rust build was performed
+        rust_exe_name = RUST_PROJECT_NAME
+        if platform.system() == "Windows":
+            rust_exe_name += ".exe"
+        rust_bin_path = os.path.join(ROOT_DIR, "target", "release", rust_exe_name)
+        print("CLI-only build process completed.")
+        print(f"Rust binary available at: {rust_bin_path}") 

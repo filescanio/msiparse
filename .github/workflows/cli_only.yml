@@ -1,7 +1,7 @@
 name: Build msiparse via Rust
 
 on:
-  workflow_dispatch: {} # Add manual trigger
+  workflow_dispatch: {} # Manual trigger
   push:
     branches:
       - master
@@ -32,17 +32,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build
-        uses: houseabsolute/actions-rust-cross@v0
+      # Set up Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          command: ${{ matrix.platform.command }}
-          target: ${{ matrix.platform.target }}
-          args: "--release"
+          python-version: '3.x'
 
+      # Build only the CLI using the build script
+      - name: Run build script (CLI only)
+        run: python build.py --cli-only
+
+      # Upload the Rust binary
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: msiparse-${{ matrix.platform.target }}.zip
+          name: msiparse-${{ matrix.platform.target }}
           path: |
-            target/${{ matrix.platform.target }}/release/msiparse*
-            !target/${{ matrix.platform.target }}/release/msiparse.d
+            target/release/msiparse*
+            !target/release/msiparse.d

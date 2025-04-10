@@ -1,7 +1,7 @@
 name: Build both CLI and GUI using the build.py script
 
 on:
-  workflow_dispatch: {} # Add manual trigger
+  workflow_dispatch: {} # Manual trigger
   push:
     branches:
       - master
@@ -43,7 +43,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x' # Or specify a needed version
+          python-version: '3.x'
 
       # Install Python dependencies (for build script and GUI)
       - name: Install Python dependencies
@@ -58,4 +58,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: msiparse-${{ matrix.platform.target }}
-          path: artifact/* # Upload contents of the artifact directory
+          path: artifact/*
