@@ -1,0 +1,11 @@
+PyQt5>=5.15.11
+magika>=0.6.1
+# Note: The application requires 7-Zip command-line tool for archive handling
+# For certificate analysis
+cryptography>=44.0.2
+asn1crypto>=1.5.1
+# For markdown rendering in help tab
+markdown>=3.7
+# For PDF rendering
+PyMuPDF>=1.25.5
+PyInstaller>=6.12.0
