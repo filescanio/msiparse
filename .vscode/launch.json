@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Build artifacts",
+            "name": "Artifact",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/build.py",
@@ -12,7 +12,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug msiparse",
+            "name": "CLI",
             "cargo": {
                 "args": [
                     "build",
@@ -28,7 +28,7 @@
             "cwd": "${workspaceFolder}"
         },
         {
-            "name": "Debug msiparse-gui",
+            "name": "GUI",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/gui/__main__.py",
