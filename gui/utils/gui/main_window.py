@@ -241,10 +241,6 @@ class MSIParseGUI(QMainWindow):
             self.export_selected_table_button.setEnabled(has_file and has_selected_table)
             self.export_all_tables_button.setEnabled(has_file and has_tables)
             self.extract_cert_button.setEnabled(has_file)
-            
-            # Update reset order button if it exists
-            if hasattr(self, 'reset_order_button'):
-                self.reset_order_button.setEnabled(has_file and not self.original_order)
                 
         except Exception as e:
             # Log the error but don't show a dialog to avoid disrupting the UI
@@ -312,11 +308,6 @@ class MSIParseGUI(QMainWindow):
         # Clear footprint tab
         if hasattr(self, 'impact_tree'):
             self.impact_tree.clear()
-            
-        # Reset original order flag for streams
-        self.original_order = True
-        if hasattr(self, 'reset_order_button'):
-            self.reset_order_button.setEnabled(False)
             
         self.update_button_states() # Update button states after clearing
 
@@ -448,12 +439,6 @@ class MSIParseGUI(QMainWindow):
         
     def filter_streams(self, filter_text):
         return filter_streams(self, filter_text)
-        
-    def on_sort_indicator_changed(self, logical_index, order):
-        return on_sort_indicator_changed(self, logical_index, order)
-        
-    def reset_to_original_order(self):
-        return reset_to_original_order(self)
         
     def show_streams_context_menu(self, position):
         return show_streams_context_menu(self, position)
@@ -789,11 +774,6 @@ class MSIParseGUI(QMainWindow):
         self.identify_streams_button.clicked.connect(self.identify_streams)
         streams_button_layout.addWidget(self.identify_streams_button)
         
-        # Add Reset Order button
-        self.reset_order_button = QPushButton("Reset to Original Order")
-        self.reset_order_button.clicked.connect(self.reset_to_original_order)
-        streams_button_layout.addWidget(self.reset_order_button)
-        
         # Add spacer to separate button groups
         streams_button_layout.addStretch()
         
@@ -837,12 +817,6 @@ class MSIParseGUI(QMainWindow):
         # Enable sorting but keep original order initially
         self.streams_tree.setSortingEnabled(True)
         self.streams_tree.header().setSortIndicator(-1, Qt.AscendingOrder)
-        
-        # Store original order
-        self.original_order = True
-        
-        # Connect to sort indicator changed signal
-        self.streams_tree.header().sortIndicatorChanged.connect(self.on_sort_indicator_changed)
         
         streams_layout.addWidget(self.streams_tree)
         
