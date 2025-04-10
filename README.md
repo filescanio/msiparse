@@ -6,9 +6,11 @@
 
 ---
 
-[![Build Status](https://github.com/filescanio/msiparse/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/filescanio/msiparse/actions/workflows/rust.yml)
+[![CLI Build Status](https://github.com/filescanio/msiparse/actions/workflows/cli_only.yml/badge.svg?branch=master)](https://github.com/filescanio/msiparse/actions/workflows/rust.yml)
+[![GUI Build Status](https://github.com/filescanio/msiparse/actions/workflows/full_bundle.yml/badge.svg?branch=master)](https://github.com/filescanio/msiparse/actions/workflows/rust.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-%23DEA584?logo=rust&logoColor=white&style=flat-square)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/Rust-%23000000.svg?e&logo=rust&logoColor=white)](#)
+[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](#)
 
 ## 🚀 Overview
 
@@ -40,17 +42,19 @@ Several alternative tools exist, but they come with notable limitations regardin
 ```bash
 Parse and inspect MSI files
 
-Usage: msiparse <COMMAND> <INPUT_FILE>
+Usage: msiparse [OPTIONS] <COMMAND>
 
 Commands:
-  list_metadata  List all the metadata the file contains
-  list_streams   List all the embedded streams, which can be extracted from the binary
-  list_tables    List all the tables and its contents embedded into the msi binary
-  extract_all    Extract all the embedded binaries
-  extract        Extract a single embedded binary
-  help           Print this message or the help of the given subcommand(s)
+  list_metadata        List all the metadata the file has
+  list_streams         List all the embedded streams, which can be extracted from the binary
+  list_tables          List all the tables and its contents embedded into the msi binary
+  extract_all          Extract all the embedded binaries
+  extract              Extract a single embedded binary
+  extract_certificate  Extract a certificate if it exists in the MSI
+  help                 Print this message or the help of the given subcommand(s)
 
 Options:
+  -p, --pretty   Pretty-print JSON output
   -h, --help     Print help
   -V, --version  Print version
 ```
@@ -80,4 +84,4 @@ This project wouldn't have been possible without the incredible work of the [MSI
 
 <br><br>
 
-_Made with ❤️ and 🦀._
+_Made with  🐍, 🦀 and ❤️_

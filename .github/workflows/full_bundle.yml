@@ -1,4 +1,4 @@
-name: Build both CLI and GUI using the build.py script
+name: Build msiparse CLI & GUI
 
 on:
   workflow_dispatch: {} # Manual trigger
@@ -57,5 +57,5 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: msiparse-${{ matrix.platform.target }}
+          name: msiparse-gui-bundle-${{ matrix.platform.target }}
           path: artifact/*

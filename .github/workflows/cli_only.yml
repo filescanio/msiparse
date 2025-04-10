@@ -1,4 +1,4 @@
-name: Build msiparse via Rust
+name: Build msiparse CLI
 
 on:
   workflow_dispatch: {} # Manual trigger
