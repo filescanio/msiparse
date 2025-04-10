@@ -19,12 +19,12 @@ WIN_7Z_URL = "https://www.7-zip.org/a/7zr.exe"
 WIN_7Z_EXE = "7z.exe"
 LINUX_7Z_URL = "https://www.7-zip.org/a/7z2409-linux-x64.tar.xz"
 LINUX_7Z_ARCHIVE = "7z-linux.tar.xz"
-LINUX_7Z_EXE_IN_ARCHIVE = "7zzs" # Common name for static build in archive
-LINUX_7Z_EXE = "7zz" # Standardize to 7zz
+LINUX_7Z_EXE_IN_ARCHIVE = "7zzs"
+LINUX_7Z_EXE = "7z"
 MACOS_7Z_URL = "https://www.7-zip.org/a/7z2409-mac.tar.xz"
 MACOS_7Z_ARCHIVE = "7z-mac.tar.xz"
-MACOS_7Z_EXE_IN_ARCHIVE = "7zz" # Binary name in the mac archive
-MACOS_7Z_EXE = "7zz" # Standardize to 7zz
+MACOS_7Z_EXE_IN_ARCHIVE = "7zz"
+MACOS_7Z_EXE = "7z"
 # ---------------------
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
