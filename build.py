@@ -15,8 +15,11 @@ PYTHON_SPEC_FILE = "msiparse.spec"
 PYTHON_DIST_NAME = "msiparse-gui"
 ARTIFACT_DIR = "artifact"
 
-WIN_7Z_URL = "https://www.7-zip.org/a/7zr.exe"
-WIN_7Z_EXE = "7z.exe"
+WIN_7Z_URL = "https://www.7-zip.org/a/7z2409-extra.7z"
+WIN_7Z_ARCHIVE_NAME = "7z-win-extra.7z"
+WIN_7Z_EXTRACT_EXE = "7za.exe"
+WIN_7ZR_DOWNLOAD_URL = "https://www.7-zip.org/a/7zr.exe"
+WIN_7ZR_TEMP_NAME = "7zr_temp.exe"
 LINUX_7Z_URL = "https://www.7-zip.org/a/7z2409-linux-x64.tar.xz"
 LINUX_7Z_ARCHIVE = "7z-linux.tar.xz"
 LINUX_7Z_EXE_IN_ARCHIVE = "7zzs"
@@ -114,12 +117,51 @@ def download_7z():
     print("\n--- Downloading 7-Zip ---")
     system = platform.system()
     success = False # Track overall success
+    final_exe_path = None # Store the final path of the downloaded executable
 
     try:
         if system == "Windows":
-            dest_path = os.path.join(ARTIFACT_PATH, WIN_7Z_EXE)
-            urllib.request.urlretrieve(WIN_7Z_URL, dest_path)
-            success = True
+            # Need 7zr.exe to extract the .7z archive containing 7za.exe
+            temp_7zr_path = os.path.join(ARTIFACT_PATH, WIN_7ZR_TEMP_NAME)
+            archive_path = os.path.join(ARTIFACT_PATH, WIN_7Z_ARCHIVE_NAME)
+            final_exe_path = os.path.join(ARTIFACT_PATH, WIN_7Z_EXTRACT_EXE)
+
+            print(f"Downloading temporary extractor {WIN_7ZR_TEMP_NAME}...")
+            urllib.request.urlretrieve(WIN_7ZR_DOWNLOAD_URL, temp_7zr_path)
+
+            print(f"Downloading main archive {WIN_7Z_ARCHIVE_NAME}...")
+            urllib.request.urlretrieve(WIN_7Z_URL, archive_path)
+
+            print(f"Extracting {WIN_7Z_EXTRACT_EXE} using {WIN_7ZR_TEMP_NAME}...")
+            # Command: 7zr_temp.exe e archive.7z -o<output_dir> <file_to_extract> -y
+            extract_cmd = [
+                temp_7zr_path,
+                "e",
+                archive_path,
+                f"-o{ARTIFACT_PATH}",
+                WIN_7Z_EXTRACT_EXE,
+                "-y"
+            ]
+            run_command(extract_cmd, check=True) # Check=True will raise on failure
+
+            if os.path.exists(final_exe_path):
+                success = True
+            else:
+                print(f"Error: Failed to extract {WIN_7Z_EXTRACT_EXE} from {WIN_7Z_ARCHIVE_NAME}", file=sys.stderr)
+
+            # Cleanup temporary files
+            print("Cleaning up temporary download files...")
+            if os.path.exists(temp_7zr_path):
+                try:
+                    os.remove(temp_7zr_path)
+                except OSError as e:
+                    print(f"Warning: Could not remove temporary extractor {temp_7zr_path}: {e}", file=sys.stderr)
+            if os.path.exists(archive_path):
+                try:
+                    os.remove(archive_path)
+                except OSError as e:
+                    print(f"Warning: Could not remove temporary archive {archive_path}: {e}", file=sys.stderr)
+
 
         elif system in ("Linux", "Darwin"): # Handle Linux and macOS together
             if system == "Linux":
@@ -134,10 +176,12 @@ def download_7z():
                 final_exe_name = MACOS_7Z_EXE
 
             archive_path = os.path.join(ARTIFACT_PATH, archive_filename)
-            dest_exe_path = os.path.join(ARTIFACT_PATH, final_exe_name)
+            final_exe_path = os.path.join(ARTIFACT_PATH, final_exe_name) # Assign final_exe_path
 
+            print(f"Downloading archive {archive_filename}...") # Added print
             urllib.request.urlretrieve(archive_url, archive_path)
 
+            print(f"Extracting {final_exe_name} from {archive_filename}...") # Added print
             with tarfile.open(archive_path, "r:xz") as tar:
                 extracted = False
                 # Attempt direct extraction of the target executable
@@ -146,6 +190,7 @@ def download_7z():
                         member.name = final_exe_name # Rename on extraction
                         tar.extract(member, path=ARTIFACT_PATH)
                         extracted = True
+                        print(f"Extracted {final_exe_name} directly.") # Added print
                         break
 
                 # Fallback: Generic extraction if direct failed
@@ -161,27 +206,30 @@ def download_7z():
                         if os.path.isfile(item_path) and item == exe_in_archive:
                             potential_exe_path = item_path
                         elif os.path.isdir(item_path):
-                             # Check inside a potential subdirectory
-                             path_in_subdir = os.path.join(item_path, exe_in_archive)
-                             if os.path.isfile(path_in_subdir):
-                                 potential_exe_path = path_in_subdir
+                            # Check inside a potential subdirectory
+                            path_in_subdir = os.path.join(item_path, exe_in_archive)
+                            if os.path.isfile(path_in_subdir):
+                                potential_exe_path = path_in_subdir
 
                         if potential_exe_path:
-                             # Move/rename to the final destination path
-                             if potential_exe_path != dest_exe_path:
-                                 shutil.move(potential_exe_path, dest_exe_path)
-                             else:
-                                 # Already in the right place, possibly renamed if item==exe_in_archive
-                                 pass
-                             found_generic = True
+                            print(f"Found {exe_in_archive} at {potential_exe_path} after generic extraction.") # Added print
+                            # Move/rename to the final destination path
+                            if potential_exe_path != final_exe_path:
+                                print(f"Moving {potential_exe_path} to {final_exe_path}") # Added print
+                                shutil.move(potential_exe_path, final_exe_path)
+                            else:
+                                # Already in the right place, possibly renamed if item==exe_in_archive
+                                pass
+                            found_generic = True
 
-                             # Attempt cleanup of extracted dir if applicable
-                             if os.path.isdir(item_path):
-                                 try:
-                                     shutil.rmtree(item_path)
-                                 except OSError as e:
-                                     print(f"Warning: Could not remove temporary extraction dir {item_path}: {e}", file=sys.stderr)
-                             break # Found it, stop searching
+                            # Attempt cleanup of extracted dir if applicable
+                            if os.path.isdir(item_path) and item_path != ARTIFACT_PATH: # Avoid deleting artifact dir itself
+                                try:
+                                    print(f"Cleaning up temporary directory {item_path}") # Added print
+                                    shutil.rmtree(item_path)
+                                except OSError as e:
+                                    print(f"Warning: Could not remove temporary extraction dir {item_path}: {e}", file=sys.stderr)
+                            break # Found it, stop searching
 
                     if not found_generic:
                         print(f"Warning: Could not find {exe_in_archive} even after generic extraction.", file=sys.stderr)
@@ -189,13 +237,15 @@ def download_7z():
                         extracted = True # Mark success if found via fallback
 
             # Cleanup and set permissions
+            print(f"Cleaning up archive {archive_path}") # Added print
             os.remove(archive_path)
-            if extracted and os.path.exists(dest_exe_path):
-                os.chmod(dest_exe_path, 0o755)
+            if extracted and os.path.exists(final_exe_path):
+                print(f"Setting execute permission on {final_exe_path}") # Added print
+                os.chmod(final_exe_path, 0o755)
                 success = True
             elif extracted:
                 # This case means extraction happened but the final file isn't there
-                print(f"Error: Expected 7z executable not found at {dest_exe_path} after extraction steps.", file=sys.stderr)
+                print(f"Error: Expected 7z executable not found at {final_exe_path} after extraction steps.", file=sys.stderr)
 
         else:
             print(f"Warning: Unsupported OS for 7z download: {system}. Skipping.")
@@ -206,8 +256,11 @@ def download_7z():
         # sys.exit(1)
 
     # Print a summary status message
-    if success:
-        print(f"7-Zip prepared successfully for {system}.")
+    if success and final_exe_path:
+        print(f"7-Zip prepared successfully: {final_exe_path}")
+    elif success:
+        # Should not happen if logic is correct, but handle gracefully
+        print(f"7-Zip prepared successfully for {system} (path variable not set).")
     else:
         print(f"7-Zip preparation failed or was skipped for {system}.")
 
