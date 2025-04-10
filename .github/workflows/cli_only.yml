@@ -1,6 +1,7 @@
 name: Build msiparse via Rust
 
 on:
+  workflow_dispatch: {} # Add manual trigger
   push:
     branches:
       - master

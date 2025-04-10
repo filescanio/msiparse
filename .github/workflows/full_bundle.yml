@@ -1,6 +1,7 @@
 name: Build both CLI and GUI using the build.py script
 
 on:
+  workflow_dispatch: {} # Add manual trigger
   push:
     branches:
       - master
