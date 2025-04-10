@@ -304,3 +304,5 @@ rust-project.json
 
 **/testfiles
 gui/msiparse
+# Handcrafted to support dependencies
+!gui/msiparse.spec
