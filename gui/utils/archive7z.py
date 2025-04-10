@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import shutil
 import tempfile
 import re
@@ -17,7 +18,8 @@ class Archive7z:
         """Find the 7z binary on the system."""
         # Check common paths for 7z
         possible_paths = [
-            "7z",              # If in PATH
+            "7z",              # If in PATH - *Nix
+            "7z.exe",          # If in PATH - Windows
             "/usr/bin/7z",     # Linux
             "/usr/local/bin/7z", # macOS with Homebrew
             "C:\\Program Files\\7-Zip\\7z.exe",  # Windows
@@ -26,7 +28,10 @@ class Archive7z:
         for path in possible_paths:
             try:
                 # Test if 7z is callable
-                subprocess.run([path, "--help"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+                creationflags = 0
+                if sys.platform == "win32":
+                    creationflags = subprocess.CREATE_NO_WINDOW
+                subprocess.run([path, "--help"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, creationflags=creationflags)
                 self.binary = path
                 return
             except (FileNotFoundError, PermissionError):
@@ -39,12 +44,16 @@ class Archive7z:
         """List the contents of an archive."""
         try:
             # Run 7z list command
+            creationflags = 0
+            if sys.platform == "win32":
+                creationflags = subprocess.CREATE_NO_WINDOW
             process = subprocess.run(
                 [self.binary, "l", "-slt", archive_path],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                check=True
+                check=True,
+                creationflags=creationflags
             )
             
             # Debug: print the raw output to help diagnose issues
@@ -210,12 +219,16 @@ class Archive7z:
         for path in paths_to_try:
             try:
                 # Run 7z extract command for a specific file
+                creationflags = 0
+                if sys.platform == "win32":
+                    creationflags = subprocess.CREATE_NO_WINDOW
                 process = subprocess.run(
                     [self.binary, "e", archive_path, path, f"-o{output_dir}", "-y"],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
-                    check=False  # Don't raise exception, handle errors below
+                    check=False,  # Don't raise exception, handle errors below
+                    creationflags=creationflags
                 )
                 
                 # Check if extraction was successful
@@ -262,12 +275,16 @@ class Archive7z:
             temp_extract_dir = tempfile.mkdtemp()
             self.temp_dirs.add(temp_extract_dir)
             
+            creationflags = 0
+            if sys.platform == "win32":
+                creationflags = subprocess.CREATE_NO_WINDOW
             extract_all_process = subprocess.run(
                 [self.binary, "x", archive_path, f"-o{temp_extract_dir}", "-y"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                check=False
+                check=False,
+                creationflags=creationflags
             )
             
             if extract_all_process.returncode == 0:
@@ -308,12 +325,16 @@ class Archive7z:
         
         try:
             # Run 7z extract command for all files
+            creationflags = 0
+            if sys.platform == "win32":
+                creationflags = subprocess.CREATE_NO_WINDOW
             process = subprocess.run(
                 [self.binary, "x", archive_path, f"-o{output_dir}", "-y"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                check=True
+                check=True,
+                creationflags=creationflags
             )
             
             return output_dir

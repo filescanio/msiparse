@@ -5,6 +5,7 @@ Certificate tab functionality for the MSI Parser GUI
 import os
 import subprocess
 import datetime
+import sys
 from PyQt5.QtWidgets import QMessageBox
 
 from utils.common import temp_directory
@@ -115,11 +116,17 @@ def analyze_certificate(parent, show_dialogs=False):
                     temp_dir
                 ]
                 
+                # Define creation flags for Windows
+                creationflags = 0
+                if sys.platform == "win32":
+                    creationflags = subprocess.CREATE_NO_WINDOW
+                
                 result = subprocess.run(
                     command,
                     capture_output=True,
                     text=True,
-                    check=True
+                    check=True,
+                    creationflags=creationflags
                 )
                 
                 output = result.stdout

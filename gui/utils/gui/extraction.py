@@ -5,6 +5,7 @@ Stream extraction functionality for the MSI Parser GUI
 import os
 import subprocess
 import tempfile
+import sys
 from PyQt5.QtWidgets import QMessageBox, QFileDialog
 
 def extract_file_to_temp(parent, stream_name, temp_dir):
@@ -61,7 +62,13 @@ def extract_stream(parent, stream_name, output_dir=None, temp=False):
         parent.statusBar().showMessage(f"Extracting stream: {stream_name}")
         
         command = [parent.msiparse_path, "extract", parent.msi_file_path, output_dir, stream_name]
-        subprocess.run(command, capture_output=True, text=True, check=True)
+
+        # Define creation flags for Windows
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = subprocess.CREATE_NO_WINDOW
+
+        subprocess.run(command, capture_output=True, text=True, check=True, creationflags=creationflags)
         
         file_path = os.path.join(output_dir, stream_name)
         if os.path.exists(file_path):
