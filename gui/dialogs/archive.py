@@ -15,7 +15,7 @@ from threading import Lock
 
 # Import common utilities
 from utils.common import (format_file_size, calculate_sha1, TableHelper, TreeHelper, 
-                         FileIdentificationHelper, NumericTreeWidgetItem)
+                         FileIdentificationHelper)
 from utils.preview import (show_hex_view_dialog, show_text_preview_dialog, 
                           show_image_preview_dialog, show_pdf_preview_dialog)
 

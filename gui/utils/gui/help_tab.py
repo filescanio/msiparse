@@ -2,9 +2,9 @@
 Help tab functionality for the MSI Parser GUI
 """
 
-import os
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QTextBrowser
 import markdown
+from utils.common import get_bundle_path # Import the helper function
 
 def create_help_tab():
     """Create the help tab"""
@@ -31,9 +31,8 @@ def create_help_tab():
     
     # Read and convert the markdown file
     try:
-        # Get the absolute path to the markdown file
-        current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        md_file_path = os.path.join(current_dir, "MSI_Installation_Workflow_Analysis.md")
+        # Use the helper function to get the correct path
+        md_file_path = get_bundle_path("help_dialog_template.md")
         
         # Read the markdown file
         with open(md_file_path, 'r', encoding='utf-8') as f:
@@ -61,10 +60,13 @@ def create_help_tab():
         
     except Exception as e:
         # Fallback content if file reading fails
+        # Add the calculated path to the error message for debugging
         error_content = f"""
         <div style="color: red; padding: 20px;">
             <h2>Error Loading Documentation</h2>
-            <p>Failed to load the MSI Installation Workflow Analysis documentation:</p>
+            <p>Failed to load the MSI Installation Workflow Analysis documentation.</p>
+            <p>Attempted path: {md_file_path}</p>
+            <p>Error details:</p>
             <pre>{str(e)}</pre>
             <p>Please ensure the documentation file exists and is accessible.</p>
         </div>

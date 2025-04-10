@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QVBoxLayout, QLabel, QScrollArea, QWidget, QMessageBox
+from PyQt5.QtWidgets import QVBoxLayout, QLabel, QScrollArea, QWidget
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
 from dialogs.base import BasePreviewDialog

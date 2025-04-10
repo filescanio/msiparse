@@ -7,9 +7,21 @@ import tempfile
 import shutil
 import contextlib
 import os
+import sys # Needed for get_bundle_path
 from PyQt5.QtWidgets import (QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QApplication)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
+
+def get_bundle_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        # Not running in PyInstaller bundle, assume running from project root (gui/)
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 def format_file_size(size_bytes):
     """Format file size in a human-readable format"""

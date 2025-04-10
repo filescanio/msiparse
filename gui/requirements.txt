@@ -1,11 +1,10 @@
 PyQt5>=5.15.11
-magika>=0.5.1
+magika>=0.6.1
 # Note: The application requires 7-Zip command-line tool for archive handling
-# On Windows: Install from https://7-zip.org/ or use Chocolatey: choco install 7zip
-# On macOS: brew install p7zip
-# On Linux: sudo apt install p7zip-full (or equivalent for your distribution)
 # For certificate analysis
-cryptography>=42.0.0
+cryptography>=44.0.2
 asn1crypto>=1.5.1
 # For markdown rendering in help tab
-markdown>=3.5.2 
+markdown>=3.7
+# For PDF rendering
+PyMuPDF>=1.25.5
