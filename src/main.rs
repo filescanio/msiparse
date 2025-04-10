@@ -131,7 +131,7 @@ struct MsiTable {
 
 // CLI main function
 // Dump every table and its contents into a json containing the column headers and all the rows
-fn list_tables(input: &str) {
+fn list_tables(input: &str, pretty: bool) {
     let package_iteration = msi::open(input).expect("open package");
     let mut package_queries = msi::open(input).expect("open package");
 
@@ -165,17 +165,25 @@ fn list_tables(input: &str) {
         });
     }
 
-    let serialized = serde_json::to_string(&tables).unwrap();
+    let serialized = if pretty {
+        serde_json::to_string_pretty(&tables).unwrap()
+    } else {
+        serde_json::to_string(&tables).unwrap()
+    };
     println!("{serialized}");
 }
 
 // CLI main function
 // List all the extractable streams if someone only wants to extract a single stream (using the 'extract' command)
-fn list_streams(input: &str) {
+fn list_streams(input: &str, pretty: bool) {
     let package = msi::open(input).expect("open package");
     let stream_names: Vec<_> = package.streams().collect();
 
-    let serialized = serde_json::to_string(&stream_names).unwrap();
+    let serialized = if pretty {
+        serde_json::to_string_pretty(&stream_names).unwrap()
+    } else {
+        serde_json::to_string(&stream_names).unwrap()
+    };
     println!("{serialized}")
 }
 
@@ -218,7 +226,7 @@ impl Default for MsiMetaData {
 
 // CLI main function
 // Get all the metadata that the library is providing us
-fn get_metadata(input: &str) {
+fn get_metadata(input: &str, pretty: bool) {
     let package = msi::open(input).expect("open package");
     let summary = package.summary_info();
 
@@ -274,7 +282,11 @@ fn get_metadata(input: &str) {
         meta.comments = comments.to_string();
     }
 
-    let serialized = serde_json::to_string(&meta).unwrap();
+    let serialized = if pretty {
+        serde_json::to_string_pretty(&meta).unwrap()
+    } else {
+        serde_json::to_string(&meta).unwrap()
+    };
     println!("{serialized}")
 }
 
@@ -287,6 +299,14 @@ fn main() {
         .arg_required_else_help(true)
         .author("OPSWAT, based on the work of Matthew D. Steele <mdsteele@alum.mit.edu>")
         .about("Parse and inspect MSI files")
+        .arg(
+            Arg::new("pretty")
+                .short('p')
+                .long("pretty")
+                .action(clap::ArgAction::SetTrue)
+                .global(true) // Make this flag available to all subcommands
+                .help("Pretty-print JSON output"),
+        )
         .subcommand(
             Command::new("list_metadata")
                 .about("List all the metadata the file has")
@@ -322,6 +342,8 @@ fn main() {
                 .arg(Arg::new("out_folder").required(true)),
         )
         .get_matches();
+
+    let pretty = matches.get_flag("pretty");
 
     match matches.subcommand() {
         Some(("extract_all", sub_matches)) => extractall(
@@ -361,16 +383,19 @@ fn main() {
             sub_matches
                 .get_one::<String>("in_path")
                 .expect("Path missing"),
+            pretty,
         ),
         Some(("list_tables", sub_matches)) => list_tables(
             sub_matches
                 .get_one::<String>("in_path")
                 .expect("Path missing"),
+            pretty,
         ),
         Some(("list_metadata", sub_matches)) => get_metadata(
             sub_matches
                 .get_one::<String>("in_path")
                 .expect("Path missing"),
+            pretty,
         ),
         _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),
     }
