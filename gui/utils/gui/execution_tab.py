@@ -19,24 +19,22 @@ SEVERITY_LEVELS = {
 
 # Phase boundaries for installation sequence
 PHASE_BOUNDARIES = {
-    "Initialization Phase": 1000,
-    "Validation Phase": 2000,
-    "Preparation Phase": 3000,
-    "Execution Phase": 4000,
-    "Commit Phase": 5000,
-    "Rollback Phase": 6000,
-    "Finalization Phase": float('inf')  # For any sequence numbers beyond other phases
+    "Initialization & Validation Phase": 799,
+    "Costing Phase": 1399,
+    "Execution Preparation Phase": 1499,
+    "Execution: Removal Phase": 3699,
+    "Execution: Installation Phase": 5999,
+    "Execution: Finalization Phase": float('inf')
 }
 
 # Colors for different phases
 PHASE_COLORS = {
-    "Initialization Phase": "#E3F2FD",  # Light Blue
-    "Validation Phase": "#F3E5F5",      # Light Purple
+    "Initialization & Validation Phase": "#E3F2FD",  # Light Blue
+    "Costing Phase": "#F3E5F5",      # Light Purple
     "Preparation Phase": "#E8F5E9",     # Light Green
-    "Execution Phase": "#FFF3E0",       # Light Orange
-    "Commit Phase": "#EFEBE9",          # Light Brown
-    "Rollback Phase": "#FFEBEE",        # Light Red
-    "Finalization Phase": "#F5F5F5"     # Light Gray
+    "Execution: Removal Phase": "#FFF3E0",       # Light Orange
+    "Execution: Installation Phase": "#EFEBE9",          # Light Brown
+    "Execution: Finalization Phase": "#F5F5F5"     # Light Gray
 }
 
 # Custom actions mapping
