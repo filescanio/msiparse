@@ -240,23 +240,21 @@ class MSIParseGUI(QMainWindow):
         # file_menu.addAction(open_action)
         # ... add other file actions
 
-        # View menu for scaling
-        view_menu = menu_bar.addMenu("&View")
-        
+        # Define zoom actions and their shortcuts
         zoom_in_action = QAction("Zoom In", self)
         zoom_in_action.setShortcut(QKeySequence.ZoomIn) # Standard shortcut (Ctrl++)
         zoom_in_action.triggered.connect(self.zoom_in)
-        view_menu.addAction(zoom_in_action)
+        self.addAction(zoom_in_action) # Add action to window for shortcut to work
 
         zoom_out_action = QAction("Zoom Out", self)
         zoom_out_action.setShortcut(QKeySequence.ZoomOut) # Standard shortcut (Ctrl+-)
         zoom_out_action.triggered.connect(self.zoom_out)
-        view_menu.addAction(zoom_out_action)
+        self.addAction(zoom_out_action) # Add action to window
 
         reset_zoom_action = QAction("Reset Zoom", self)
         reset_zoom_action.setShortcut(QKeySequence("Ctrl+0"))
         reset_zoom_action.triggered.connect(self.reset_zoom)
-        view_menu.addAction(reset_zoom_action)
+        self.addAction(reset_zoom_action) # Add action to window
 
     def zoom_in(self):
         self.current_font_scale += 0.1
