@@ -21,6 +21,7 @@ from utils.preview import (show_hex_view_dialog, show_text_preview_dialog,
 
 # Import our custom 7z-based archive handler
 from utils import archive7z
+from utils.gui.main_window import center_dialog_on_parent_screen
 
 class ArchivePreviewDialog(QDialog):
     """Dialog for displaying archive contents"""
@@ -48,9 +49,12 @@ class ArchivePreviewDialog(QDialog):
         self.init_ui()
         self.load_archive_contents()
         
+        # Center the dialog on the parent's screen
+        center_dialog_on_parent_screen(self, parent)
+        
     def init_ui(self):
         self.setWindowTitle(f"Archive Preview: {self.archive_name}")
-        self.setGeometry(100, 100, 900, 600)
+        self.resize(900, 600)
         
         # Main layout
         layout = QVBoxLayout()
