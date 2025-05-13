@@ -49,6 +49,7 @@ def run_command(cmd, cwd=None, check=True):
 def build_rust():
     """Builds the Rust project in release mode."""
     print("\n--- Building Rust Project ---")
+    run_command(["cargo", "clean"], cwd=ROOT_DIR)
     run_command(["cargo", "build", "--release"], cwd=ROOT_DIR)
     print("--- Rust Build Done ---")
 

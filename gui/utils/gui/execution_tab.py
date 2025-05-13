@@ -21,7 +21,7 @@ SEVERITY_LEVELS = {
 PHASE_BOUNDARIES = {
     "Initialization & Validation Phase": 799,
     "Costing Phase": 1399,
-    "Execution Preparation Phase": 1499,
+    "Preparation Phase": 1499,
     "Execution: Removal Phase": 3699,
     "Execution: Installation Phase": 5999,
     "Execution: Finalization Phase": float('inf')
@@ -46,7 +46,7 @@ def clean_action_name(action_name):
     return ''.join(char for char in action_name if char.isprintable())
 
 def create_phase_header(phase_name, parent):
-    if phase_name != "Initialization Phase":
+    if phase_name != "Initialization & Validation Phase":
         spacer = QTreeWidgetItem(["", "", "", "", ""])
         parent.sequence_tree.addTopLevelItem(spacer)
     
