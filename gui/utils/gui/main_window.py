@@ -1129,6 +1129,11 @@ class MSIParseGUI(QMainWindow):
         # Right side - Table content
         self.table_content = QTableWidget()
         self.table_content.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        
+        # Enable context menu for table content
+        self.table_content.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table_content.customContextMenuRequested.connect(self.show_table_content_context_menu)
+        
         tables_splitter.addWidget(self.table_content)
         
         # Set initial splitter sizes
@@ -1228,3 +1233,74 @@ class MSIParseGUI(QMainWindow):
         event.ignore()
 
     # --- End Drag and Drop --- 
+
+    def show_table_content_context_menu(self, position):
+        """Show context menu for the table content"""
+        item = self.table_content.itemAt(position)
+        if not item:
+            return
+            
+        # Get cell content
+        cell_content = item.text()
+        if not cell_content:
+            return
+            
+        menu = QMenu()
+        
+        # Add copy action
+        copy_action = QAction("Copy Cell Content", self)
+        copy_action.triggered.connect(lambda: self.copy_to_clipboard(cell_content))
+        menu.addAction(copy_action)
+        
+        # Add text preview action
+        text_preview_action = QAction("Open in Text Preview", self)
+        text_preview_action.triggered.connect(lambda: self.show_cell_in_text_preview(cell_content))
+        menu.addAction(text_preview_action)
+        
+        menu.exec_(self.table_content.mapToGlobal(position))
+    
+    def show_cell_in_text_preview(self, content):
+        """Show the cell content in a text preview dialog"""
+        from dialogs.text import TextPreviewDialog
+        
+        if content:
+            # Determine a good title based on the current table
+            if self.table_list.currentItem():
+                table_name = self.table_list.currentItem().text()
+                title = f"Cell from {table_name} table"
+            else:
+                title = "Table cell content"
+                
+            # Show the text preview dialog
+            text_dialog = TextPreviewDialog(self, title, content)
+            text_dialog.exec_()
+            
+    def copy_impact_item(self, item, column):
+        """Copy a specific column from the impact item"""
+        if item:
+            text = item.text(column)
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage(f"Copied: {text[:50]}...", 2000)
+    
+    def copy_impact_full_line(self, item):
+        """Copy all columns from the impact item as a tab-separated line"""
+        if item:
+            # Skip the Type column (0) and only include Entry, Concern, and Details
+            text = f"{item.text(1)}\t{item.text(2)}\t{item.text(3)}"
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage("Copied full line", 2000)
+
+    def copy_sequence_item(self, item, column):
+        """Copy a specific column from the sequence item"""
+        if item:
+            text = item.text(column)
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage(f"Copied: {text[:50]}...", 2000)
+    
+    def copy_sequence_full_line(self, item):
+        """Copy all columns from the sequence item as a tab-separated line"""
+        if item:
+            # Copy all columns as tab-separated text
+            text = "\t".join(item.text(i) for i in range(5))
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage("Copied full line", 2000) 
