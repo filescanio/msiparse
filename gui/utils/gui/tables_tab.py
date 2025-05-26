@@ -5,7 +5,7 @@ Tables tab functionality for the MSI Parser GUI
 import json
 from PyQt5.QtWidgets import (QTableWidgetItem, QListWidgetItem, QWidget, QHBoxLayout, 
                             QLabel, QToolButton, QMessageBox, QFileDialog, QApplication)
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QFontMetrics
 
 def list_tables(parent):
     """List MSI tables"""
@@ -89,6 +89,12 @@ def display_tables(parent, output):
         # Automatically run the workflow and impact analyses
         parent.analyze_install_sequence()
         parent.analyze_installation_impact()
+
+        # Adjust row heights after table content might have been repopulated and fonts scaled
+        if hasattr(parent, 'table_content') and parent.table_content.rowCount() > 0:
+            parent.table_content.resizeRowsToContents()
+            for r in range(parent.table_content.rowCount()):
+                parent.table_content.setRowHeight(r, int(parent.table_content.rowHeight(r) * 1.1))
         
     except json.JSONDecodeError:
         parent.handle_error("Parse Error", "Error parsing tables output", show_dialog=True)
@@ -119,8 +125,14 @@ def table_selected(parent, current, previous):
     parent.table_content.setColumnCount(len(columns))
     parent.table_content.setHorizontalHeaderLabels(columns)
     
-    # Create monospaced font for hash columns
-    mono_font = QFont("Courier New", 10)
+    # Create a scalable monospaced font for hash columns
+    effective_base_font_size = parent.base_font_size if hasattr(parent, 'base_font_size') else QApplication.font().pointSize()
+    current_scale = parent.current_font_scale if hasattr(parent, 'current_font_scale') else 1.0
+    scaled_mono_font_size = int(effective_base_font_size * current_scale) # Same scale as other text for now
+    if scaled_mono_font_size <= 0: scaled_mono_font_size = max(1, int(10 * current_scale)) # Fallback, ensuring it scales somewhat
+
+    mono_font = QFont("Courier New") # Specify family first
+    mono_font.setPointSize(scaled_mono_font_size)
     mono_font.setFixedPitch(True)
     
     # Fill the table with data
@@ -138,6 +150,45 @@ def table_selected(parent, current, previous):
                     
                 parent.table_content.setItem(row_idx, col_idx, item)
     
+    # Adjust row heights after populating table content
+    if parent.table_content.rowCount() > 0:
+        parent.table_content.resizeRowsToContents() # Step 1: Fit to content initially
+
+        # Step 2: Calculate scaled single line height for constraint
+        # parent is MSIParseGUI which has base_font_size and current_font_scale
+        effective_base_font_size = parent.base_font_size if hasattr(parent, 'base_font_size') else QApplication.font().pointSize()
+        current_scale = parent.current_font_scale if hasattr(parent, 'current_font_scale') else 1.0
+        
+        scaled_font_size = int(effective_base_font_size * current_scale)
+        if scaled_font_size <= 0: # Fallback if calculation is off
+            scaled_font_size = QApplication.font().pointSize() 
+            if scaled_font_size <=0: scaled_font_size = 10 # Absolute fallback
+
+        temp_font = QFont(parent.table_content.font()) # Use table's current font as a base style
+        temp_font.setPointSize(scaled_font_size)
+        
+        font_metrics = QFontMetrics(temp_font)
+        single_line_height = font_metrics.height()
+        if single_line_height <= 0: single_line_height = 13 # Avoid division by zero or tiny heights, rough default
+        
+        max_text_height_for_two_lines = 2 * single_line_height
+
+        for r in range(parent.table_content.rowCount()):
+            current_content_height = parent.table_content.rowHeight(r)
+            
+            # Constrain the content part of the height to max two lines
+            constrained_text_height = min(current_content_height, max_text_height_for_two_lines)
+            
+            # Apply 10% padding to this constrained height
+            final_row_height = int(constrained_text_height * 1.1)
+            
+            # Ensure row is at least tall enough for one line of text plus padding
+            min_practical_height = int(single_line_height * 1.1) 
+            if final_row_height < min_practical_height:
+                final_row_height = min_practical_height
+
+            parent.table_content.setRowHeight(r, final_row_height)
+
     parent.statusBar().showMessage(f"Showing table: {table_name} ({len(rows)} rows)")
     
     # Update button states

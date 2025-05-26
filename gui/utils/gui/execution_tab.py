@@ -19,24 +19,22 @@ SEVERITY_LEVELS = {
 
 # Phase boundaries for installation sequence
 PHASE_BOUNDARIES = {
-    "Initialization Phase": 1000,
-    "Validation Phase": 2000,
-    "Preparation Phase": 3000,
-    "Execution Phase": 4000,
-    "Commit Phase": 5000,
-    "Rollback Phase": 6000,
-    "Finalization Phase": float('inf')  # For any sequence numbers beyond other phases
+    "Initialization & Validation Phase": 799,
+    "Costing Phase": 1399,
+    "Preparation Phase": 1499,
+    "Execution: Removal Phase": 3699,
+    "Execution: Installation Phase": 5999,
+    "Execution: Finalization Phase": float('inf')
 }
 
 # Colors for different phases
 PHASE_COLORS = {
-    "Initialization Phase": "#E3F2FD",  # Light Blue
-    "Validation Phase": "#F3E5F5",      # Light Purple
+    "Initialization & Validation Phase": "#E3F2FD",  # Light Blue
+    "Costing Phase": "#F3E5F5",      # Light Purple
     "Preparation Phase": "#E8F5E9",     # Light Green
-    "Execution Phase": "#FFF3E0",       # Light Orange
-    "Commit Phase": "#EFEBE9",          # Light Brown
-    "Rollback Phase": "#FFEBEE",        # Light Red
-    "Finalization Phase": "#F5F5F5"     # Light Gray
+    "Execution: Removal Phase": "#FFF3E0",       # Light Orange
+    "Execution: Installation Phase": "#EFEBE9",          # Light Brown
+    "Execution: Finalization Phase": "#F5F5F5"     # Light Gray
 }
 
 # Custom actions mapping
@@ -48,24 +46,33 @@ def clean_action_name(action_name):
     return ''.join(char for char in action_name if char.isprintable())
 
 def create_phase_header(phase_name, parent):
-    if phase_name != "Initialization Phase":
+    if phase_name != "Initialization & Validation Phase":
         spacer = QTreeWidgetItem(["", "", "", "", ""])
         parent.sequence_tree.addTopLevelItem(spacer)
     
-    header = QTreeWidgetItem([phase_name.upper(), "", "", "", ""])
+    header_item = QTreeWidgetItem([phase_name.upper(), "", "", "", ""])
     header_color = QColor(PHASE_COLORS[phase_name])
     header_color.setAlpha(80)
     
     for i in range(5):
-        header.setBackground(i, header_color)
+        header_item.setBackground(i, header_color)
     
-    font = header.font(0)
+    font = header_item.font(0)
     font.setBold(True)
-    font.setPointSize(font.pointSize() + 1)
-    header.setFont(0, font)
-    header.setTextAlignment(0, Qt.AlignCenter)
     
-    parent.sequence_tree.addTopLevelItem(header)
+    # Consistent font scaling for headers
+    base_header_size_offset = 1 # Make headers slightly larger than base
+    effective_base_font_size = parent.base_font_size if hasattr(parent, 'base_font_size') else QApplication.font().pointSize()
+    
+    scaled_size = int((effective_base_font_size + base_header_size_offset) * parent.current_font_scale) if hasattr(parent, 'current_font_scale') else (effective_base_font_size + base_header_size_offset)
+    if scaled_size <= 0:
+        scaled_size = 1
+        
+    font.setPointSize(scaled_size)
+    header_item.setFont(0, font)
+    header_item.setTextAlignment(0, Qt.AlignCenter)
+    
+    parent.sequence_tree.addTopLevelItem(header_item)
 
 def create_sequence_item(sequence, action, condition, impact, severity, phase_name, parent):
     # Create the main action item

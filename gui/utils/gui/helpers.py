@@ -8,6 +8,8 @@ from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 from utils.subprocess_utils import run_subprocess
+from PyQt5.QtWidgets import QWidget, QTreeWidget, QHeaderView
+from PyQt5.QtGui import QFont
 
 def show_text_preview_dialog(parent, file_name, file_path, mime_type=None):
     """Show a text preview dialog for the given file path with optional MIME type
@@ -209,4 +211,75 @@ def run_command_safe(parent, command, success_message=None):
             return result.stdout
     except Exception as e:
         parent.show_error("Command Error", e)
-        return None 
+        return None
+
+def apply_scaling_to_dialog(dialog_widget, scale_factor, original_fonts_dict):
+    """
+    Apply font scaling to all relevant widgets within a dialog.
+
+    Args:
+        dialog_widget: The dialog (QWidget) whose children will be scaled.
+        scale_factor: The factor by which to scale the fonts (e.g., 1.0, 1.1).
+        original_fonts_dict: A dictionary to store/retrieve original QFont objects for widgets.
+    """
+    if not hasattr(dialog_widget, 'findChildren'):
+        return # Not a QWidget or similar
+
+    # Ensure all widgets have their original fonts stored
+    for widget in dialog_widget.findChildren(QWidget):
+        widget_id = id(widget)
+        if widget_id not in original_fonts_dict:
+            original_fonts_dict[widget_id] = widget.font()
+
+    all_widgets = dialog_widget.findChildren(QWidget)
+    for widget in all_widgets:
+        widget_id = id(widget)
+        # Retrieve the original font; if not found, use current and store it (should not happen if pre-populated)
+        original_font = original_fonts_dict.get(widget_id, widget.font())
+        if widget_id not in original_fonts_dict : 
+             original_fonts_dict[widget_id] = original_font
+
+
+        scaled_font = QFont(original_font) # Create a new font object from the original
+        
+        original_point_size = original_font.pointSize()
+        if original_point_size <= 0: 
+            # If point size isn't set (e.g., -1), use application's base font size
+            app_font_size = QApplication.font().pointSize()
+            original_point_size = app_font_size if app_font_size > 0 else 10 # Default to 10 if app_font_size is also invalid
+
+        new_size = int(original_point_size * scale_factor)
+        if new_size <= 0:
+            new_size = 1 # Minimum font size
+        
+        scaled_font.setPointSize(new_size)
+        widget.setFont(scaled_font)
+
+        # Special handling for QTreeWidget headers
+        if isinstance(widget, QTreeWidget):
+            header = widget.header()
+            if header:
+                header_id = id(header)
+                original_header_font = original_fonts_dict.get(header_id, header.font())
+                if header_id not in original_fonts_dict:
+                     original_fonts_dict[header_id] = original_header_font
+                
+                scaled_header_font = QFont(original_header_font)
+                original_header_point_size = original_header_font.pointSize()
+
+                if original_header_point_size <= 0:
+                    app_font_size = QApplication.font().pointSize()
+                    original_header_point_size = app_font_size if app_font_size > 0 else 10
+
+                new_header_size = int(original_header_point_size * scale_factor)
+                if new_header_size <= 0:
+                    new_header_size = 1
+                
+                scaled_header_font.setPointSize(new_header_size)
+                header.setFont(scaled_header_font)
+                # Optionally, resize sections if needed, though this might be disruptive
+                # header.resizeSections(QHeaderView.ResizeToContents)
+
+    # Request layout recalculation and repaint for the dialog
+    dialog_widget.updateGeometry()
+    dialog_widget.update() 

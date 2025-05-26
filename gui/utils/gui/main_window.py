@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QSplitter, QTableWidget, QHeaderView, QListWidget,
                             QApplication, QLineEdit, QShortcut, QCheckBox, QMenu, QAction)
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QKeySequence
+from PyQt5.QtGui import QKeySequence, QFont
 
 # Import custom modules
 from threads.command import CommandThread
@@ -86,6 +86,43 @@ from utils.gui.preview import (
 )
 from utils.gui.help_tab import create_help_tab
 
+# Helper function to center dialogs
+def center_dialog_on_parent_screen(dialog, parent_window):
+    if not parent_window:
+        # Try to get the active window if no explicit parent is given
+        parent_window = QApplication.activeWindow()
+    if not parent_window:
+        # If still no parent, can't do much, let Qt decide
+        return
+
+    # Determine the screen of the parent window
+    # Using mapToGlobal and rect().center() is robust for finding the parent's center
+    try:
+        parent_center_global = parent_window.mapToGlobal(parent_window.rect().center())
+        parent_screen = QApplication.screenAt(parent_center_global)
+        if not parent_screen: # Fallback if screenAt returns None
+            parent_screen = parent_window.screen() # Relies on QWindow.screen(), might be less precise for QWidget
+        if not parent_screen:
+             # Last resort, use primary screen if others fail
+            parent_screen = QApplication.primaryScreen()
+        
+        if not parent_screen: # If still no screen, abort
+            return
+            
+    except AttributeError: # parent_window might not be a QWidget with mapToGlobal or rect
+        # Fallback to primary screen if parent properties are not as expected
+        parent_screen = QApplication.primaryScreen()
+        if not parent_screen:
+            return
+
+    screen_geometry = parent_screen.geometry()
+    # Use frameGeometry to account for window decorations for more accurate centering
+    dialog_frame_geometry = dialog.frameGeometry()
+
+    new_x = screen_geometry.x() + (screen_geometry.width() - dialog_frame_geometry.width()) / 2
+    new_y = screen_geometry.y() + (screen_geometry.height() - dialog_frame_geometry.height()) / 2
+    dialog.move(int(new_x), int(new_y))
+
 class MSIParseGUI(QMainWindow):
     def __init__(self, archive_support=True):
         super().__init__()
@@ -97,6 +134,11 @@ class MSIParseGUI(QMainWindow):
         self.tables_data = None  # Store the tables data
         self.streams_data = []  # Store stream names
         self.archive_support = archive_support  # Store archive support status
+        
+        # Font scaling attributes
+        self.current_font_scale = 1.0
+        self.base_font_size = QApplication.font().pointSize() # Store default app font size
+        self._original_widget_fonts = {} # To store original font of widgets for proper scaling
         
         # Initialize icons for different file groups
         self.group_icons = get_group_icons()
@@ -143,6 +185,9 @@ class MSIParseGUI(QMainWindow):
         # Enable drag and drop
         self.setAcceptDrops(True)
         
+        # Create menus (including View menu for scaling)
+        self.create_menus()
+        
         # File selection area
         file_layout = QHBoxLayout()
         self.file_label = QLabel("No MSI file selected")
@@ -181,6 +226,163 @@ class MSIParseGUI(QMainWindow):
         # Set up keyboard shortcuts after tabs are created
         self.setup_shortcuts()
         
+        # Apply initial font scaling (which will be 1.0 by default)
+        # This also helps populate _original_widget_fonts
+        self.apply_scaling()
+        
+    def create_menus(self):
+        menu_bar = self.menuBar()
+
+        # File menu (example, if you had one)
+        # file_menu = menu_bar.addMenu("&File")
+        # open_action = QAction("&Open MSI...", self)
+        # open_action.triggered.connect(self.browse_msi_file)
+        # file_menu.addAction(open_action)
+        # ... add other file actions
+
+        # Define zoom actions and their shortcuts
+        zoom_in_action = QAction("Zoom In", self)
+        zoom_in_action.setShortcut(QKeySequence.ZoomIn) # Standard shortcut (Ctrl++)
+        zoom_in_action.triggered.connect(self.zoom_in)
+        self.addAction(zoom_in_action) # Add action to window for shortcut to work
+
+        zoom_out_action = QAction("Zoom Out", self)
+        zoom_out_action.setShortcut(QKeySequence.ZoomOut) # Standard shortcut (Ctrl+-)
+        zoom_out_action.triggered.connect(self.zoom_out)
+        self.addAction(zoom_out_action) # Add action to window
+
+        reset_zoom_action = QAction("Reset Zoom", self)
+        reset_zoom_action.setShortcut(QKeySequence("Ctrl+0"))
+        reset_zoom_action.triggered.connect(self.reset_zoom)
+        self.addAction(reset_zoom_action) # Add action to window
+
+    def zoom_in(self):
+        self.current_font_scale += 0.1
+        if self.current_font_scale > 3.0: # Max scale limit
+            self.current_font_scale = 3.0
+        self.apply_scaling()
+
+    def zoom_out(self):
+        self.current_font_scale -= 0.1
+        if self.current_font_scale < 0.5: # Min scale limit
+            self.current_font_scale = 0.5
+        self.apply_scaling()
+
+    def reset_zoom(self):
+        self.current_font_scale = 1.0
+        self.apply_scaling()
+
+    def apply_scaling(self):
+        """Apply current font scale to all relevant widgets."""
+        # First, ensure all widgets have their original fonts stored if not already
+        for widget in self.findChildren(QWidget):
+            widget_id = id(widget)
+            if widget_id not in self._original_widget_fonts:
+                self._original_widget_fonts[widget_id] = widget.font()
+
+        # Apply scaled font
+        for widget_id, original_font in self._original_widget_fonts.items():
+            try:
+                # Attempt to find widget by its stored id - this is tricky if widgets are recreated
+                # A better approach might be to re-traverse or apply to known persistent widgets
+                # For now, we assume widgets persist or this function is called after UI setup.
+                
+                # This direct id lookup is not safe if widgets are destroyed and recreated.
+                # We will rely on iterating findChildren again for safety here.
+                pass # Placeholder for direct id lookup logic if it were safe
+            except: # pragma: no cover
+                # Widget might no longer exist, skip
+                continue
+        
+        all_widgets = self.findChildren(QWidget) # Get current list of widgets
+        
+        for widget in all_widgets:
+            widget_id = id(widget)
+            original_font = self._original_widget_fonts.get(widget_id)
+
+            if not original_font: # Should have been populated above
+                original_font = widget.font() # Fallback
+                self._original_widget_fonts[widget_id] = original_font
+
+            scaled_font = QFont(original_font) # Create a new font object from the original
+            
+            # Get original point size if it was positive, otherwise use app base
+            original_point_size = original_font.pointSize()
+            if original_point_size <= 0: # If point size isn't set, use a default base
+                # For widgets like QTreeWidget items, pointSize might be -1
+                # Let's try with application's base font size for these.
+                 original_point_size = QApplication.font().pointSize()
+                 if original_point_size <=0: # If still invalid, use our stored base_font_size
+                     original_point_size = self.base_font_size
+
+
+            new_size = int(original_point_size * self.current_font_scale)
+            
+            if new_size <= 0:
+                new_size = 1 # Minimum font size
+            
+            scaled_font.setPointSize(new_size)
+            widget.setFont(scaled_font)
+
+            # Special handling for some widget types
+            if isinstance(widget, QTreeWidget):
+                header_font = QFont(widget.header().font())
+                original_header_point_size = self._original_widget_fonts.get(id(widget.header()), widget.header().font()).pointSize()
+                if original_header_point_size <=0: original_header_point_size = self.base_font_size
+                new_header_size = int(original_header_point_size * self.current_font_scale)
+                if new_header_size <=0: new_header_size = 1
+                header_font.setPointSize(new_header_size)
+                widget.header().setFont(header_font)
+                widget.header().resizeSections(QHeaderView.ResizeToContents) # or another mode
+                 # For QTreeWidget items, font is often set per item.
+                 # This needs to be handled where items are created or by iterating items.
+                 # We'll address this by modifying item creation functions later.
+
+            elif isinstance(widget, QTableWidget):
+                header_font = QFont(widget.horizontalHeader().font())
+                original_h_header_point_size = self._original_widget_fonts.get(id(widget.horizontalHeader()), widget.horizontalHeader().font()).pointSize()
+                if original_h_header_point_size <=0: original_h_header_point_size = self.base_font_size
+                new_h_header_size = int(original_h_header_point_size * self.current_font_scale)
+                if new_h_header_size <=0: new_h_header_size = 1
+                header_font.setPointSize(new_h_header_size)
+                widget.horizontalHeader().setFont(header_font)
+                widget.horizontalHeader().resizeSections(QHeaderView.ResizeToContents)
+
+                v_header_font = QFont(widget.verticalHeader().font())
+                original_v_header_point_size = self._original_widget_fonts.get(id(widget.verticalHeader()), widget.verticalHeader().font()).pointSize()
+                if original_v_header_point_size <=0: original_v_header_point_size = self.base_font_size
+                new_v_header_size = int(original_v_header_point_size * self.current_font_scale)
+                if new_v_header_size <=0: new_v_header_size = 1
+                v_header_font.setPointSize(new_v_header_size)
+                widget.verticalHeader().setFont(v_header_font)
+                widget.verticalHeader().resizeSections(QHeaderView.ResizeToContents)
+                # Similar to QTreeWidget, QTableWidgetItems need individual font updates.
+        
+        # Re-populate/update views that manage their own item fonts
+        if self.msi_file_path: # Only if a file is loaded
+            # These functions internally clear and re-add items, so they should pick up new global font scale
+            # if item creation logic is updated.
+            if self.tabs.currentWidget() == self.execution_tab or self.execution_tab.isVisible():
+                 self.analyze_install_sequence() # This will repopulate the sequence_tree
+            
+            if self.tabs.currentWidget() == self.footprint_tab or self.footprint_tab.isVisible():
+                 self.analyze_installation_impact() # This will repopulate impact_tree
+            
+            # For tables, if a table is selected, re-display it and adjust row heights
+            if self.tabs.currentWidget() == self.tables_tab or self.tables_tab.isVisible():
+                current_table_item = self.table_list.currentItem()
+                if current_table_item:
+                    self.table_selected(current_table_item, None) # Force reload of table content
+                # Adjust row heights after table content might have been repopulated and fonts scaled
+                if hasattr(self, 'table_content') and self.table_content.rowCount() > 0:
+                    self.table_content.resizeRowsToContents()
+                    for r in range(self.table_content.rowCount()):
+                       self.table_content.setRowHeight(r, int(self.table_content.rowHeight(r) * 1.1)) 
+
+        self.update_button_states() # Some button text might change
+        self.updateGeometry() # Request layout recalculation
+        self.update() # Schedule a repaint
+
     def setup_shortcuts(self):
         """Set up keyboard shortcuts for the application"""
         # Global shortcut for Ctrl+F that works on any tab
@@ -200,6 +402,10 @@ class MSIParseGUI(QMainWindow):
             self.table_filter_escape = QShortcut(QKeySequence("Escape"), self.table_filter)
             self.table_filter_escape.activated.connect(self.table_filter.clear)
         
+        # Add key sequences for zoom, ensuring they don't conflict if already added by menu
+        # QKeySequence.ZoomIn and ZoomOut are usually handled by QAction.setShortcut
+        # Ctrl+0 is also handled by QAction.setShortcut
+
     def focus_current_filter(self):
         """Focus on the filter field of the currently active tab or dialog"""
         try:
@@ -361,7 +567,13 @@ class MSIParseGUI(QMainWindow):
         error_msg = str(error)
         self.statusBar().showMessage(f"Error: {error_msg[:100]}")
         if show_dialog:
-            QMessageBox.critical(self, title, error_msg)
+            # QMessageBox.critical(self, title, error_msg)
+            msg_box = QMessageBox(self)
+            msg_box.setIcon(QMessageBox.Critical)
+            msg_box.setWindowTitle(title)
+            msg_box.setText(error_msg)
+            center_dialog_on_parent_screen(msg_box, self)
+            msg_box.exec_()
 
     def show_status(self, message, timeout=0):
         """Show a status message with optional timeout"""
@@ -372,13 +584,25 @@ class MSIParseGUI(QMainWindow):
         error_msg = str(error)
         self.show_status(f"Error: {error_msg[:100]}")
         if show_dialog and not status_only:
-            QMessageBox.critical(self, title, error_msg)
+            # QMessageBox.critical(self, title, error_msg)
+            msg_box = QMessageBox(self)
+            msg_box.setIcon(QMessageBox.Critical)
+            msg_box.setWindowTitle(title)
+            msg_box.setText(error_msg)
+            center_dialog_on_parent_screen(msg_box, self)
+            msg_box.exec_()
             
     def show_warning(self, title, message, show_dialog=True, status_only=False):
         """Centralized warning handling with optional dialog"""
         self.show_status(message)
         if show_dialog and not status_only:
-            QMessageBox.warning(self, title, message)
+            # QMessageBox.warning(self, title, message)
+            msg_box = QMessageBox(self)
+            msg_box.setIcon(QMessageBox.Warning)
+            msg_box.setWindowTitle(title)
+            msg_box.setText(message)
+            center_dialog_on_parent_screen(msg_box, self)
+            msg_box.exec_()
 
     def copy_to_clipboard(self, text):
         """Copy the given text to the clipboard"""
@@ -403,7 +627,13 @@ class MSIParseGUI(QMainWindow):
         try:
             webbrowser.open(url)
         except Exception as e:
-            QMessageBox.critical(self, "Browser Error", f"Failed to open browser: {str(e)}")
+            # QMessageBox.critical(self, "Browser Error", f"Failed to open browser: {str(e)}")
+            msg_box = QMessageBox(self)
+            msg_box.setIcon(QMessageBox.Critical)
+            msg_box.setWindowTitle("Browser Error")
+            msg_box.setText(f"Failed to open browser: {str(e)}")
+            center_dialog_on_parent_screen(msg_box, self)
+            msg_box.exec_()
             self.statusBar().showMessage("Failed to open browser")
 
     # Forward method calls to the appropriate modules
@@ -616,19 +846,31 @@ class MSIParseGUI(QMainWindow):
             self.statusBar().showMessage(f"Exported {exported_count} tables to {export_dir}")
             
             # Show success message
-            QMessageBox.information(
-                self,
-                "Export Successful",
-                f"All tables have been exported as individual files to:\n{export_dir}"
-            )
+            # QMessageBox.information(
+            #     self,
+            #     "Export Successful",
+            #     f"All tables have been exported as individual files to:\n{export_dir}"
+            # )
+            msg_box_info = QMessageBox(self)
+            msg_box_info.setIcon(QMessageBox.Information)
+            msg_box_info.setWindowTitle("Export Successful")
+            msg_box_info.setText(f"All tables have been exported as individual files to:\n{export_dir}")
+            center_dialog_on_parent_screen(msg_box_info, self)
+            msg_box_info.exec_()
             
         except Exception as e:
             # Show error
-            QMessageBox.critical(
-                self,
-                "Export Failed",
-                f"Failed to export tables: {str(e)}"
-            )
+            # QMessageBox.critical(
+            #     self,
+            #     "Export Failed",
+            #     f"Failed to export tables: {str(e)}"
+            # )
+            msg_box_err = QMessageBox(self)
+            msg_box_err.setIcon(QMessageBox.Critical)
+            msg_box_err.setWindowTitle("Export Failed")
+            msg_box_err.setText(f"Failed to export tables: {str(e)}")
+            center_dialog_on_parent_screen(msg_box_err, self)
+            msg_box_err.exec_()
 
     def analyze_installation_impact(self):
         """Analyze the MSI package to identify all system changes that will occur during installation"""
@@ -887,6 +1129,11 @@ class MSIParseGUI(QMainWindow):
         # Right side - Table content
         self.table_content = QTableWidget()
         self.table_content.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        
+        # Enable context menu for table content
+        self.table_content.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table_content.customContextMenuRequested.connect(self.show_table_content_context_menu)
+        
         tables_splitter.addWidget(self.table_content)
         
         # Set initial splitter sizes
@@ -986,3 +1233,74 @@ class MSIParseGUI(QMainWindow):
         event.ignore()
 
     # --- End Drag and Drop --- 
+
+    def show_table_content_context_menu(self, position):
+        """Show context menu for the table content"""
+        item = self.table_content.itemAt(position)
+        if not item:
+            return
+            
+        # Get cell content
+        cell_content = item.text()
+        if not cell_content:
+            return
+            
+        menu = QMenu()
+        
+        # Add copy action
+        copy_action = QAction("Copy Cell Content", self)
+        copy_action.triggered.connect(lambda: self.copy_to_clipboard(cell_content))
+        menu.addAction(copy_action)
+        
+        # Add text preview action
+        text_preview_action = QAction("Open in Text Preview", self)
+        text_preview_action.triggered.connect(lambda: self.show_cell_in_text_preview(cell_content))
+        menu.addAction(text_preview_action)
+        
+        menu.exec_(self.table_content.mapToGlobal(position))
+    
+    def show_cell_in_text_preview(self, content):
+        """Show the cell content in a text preview dialog"""
+        from dialogs.text import TextPreviewDialog
+        
+        if content:
+            # Determine a good title based on the current table
+            if self.table_list.currentItem():
+                table_name = self.table_list.currentItem().text()
+                title = f"Cell from {table_name} table"
+            else:
+                title = "Table cell content"
+                
+            # Show the text preview dialog
+            text_dialog = TextPreviewDialog(self, title, content)
+            text_dialog.exec_()
+            
+    def copy_impact_item(self, item, column):
+        """Copy a specific column from the impact item"""
+        if item:
+            text = item.text(column)
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage(f"Copied: {text[:50]}...", 2000)
+    
+    def copy_impact_full_line(self, item):
+        """Copy all columns from the impact item as a tab-separated line"""
+        if item:
+            # Skip the Type column (0) and only include Entry, Concern, and Details
+            text = f"{item.text(1)}\t{item.text(2)}\t{item.text(3)}"
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage("Copied full line", 2000)
+
+    def copy_sequence_item(self, item, column):
+        """Copy a specific column from the sequence item"""
+        if item:
+            text = item.text(column)
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage(f"Copied: {text[:50]}...", 2000)
+    
+    def copy_sequence_full_line(self, item):
+        """Copy all columns from the sequence item as a tab-separated line"""
+        if item:
+            # Copy all columns as tab-separated text
+            text = "\t".join(item.text(i) for i in range(5))
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage("Copied full line", 2000) 

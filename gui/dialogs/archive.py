@@ -5,7 +5,8 @@ import webbrowser
 from pathlib import Path
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
                            QTreeWidget, QMessageBox, QProgressBar,
-                           QMenu, QAction, QFileDialog, QApplication, QLineEdit, QShortcut)
+                           QMenu, QAction, QFileDialog, QApplication, QLineEdit, QShortcut,
+                           QMainWindow)
 from PyQt5.QtCore import Qt, QThread
 from PyQt5.QtGui import QKeySequence, QFont
 import magika
@@ -21,6 +22,8 @@ from utils.preview import (show_hex_view_dialog, show_text_preview_dialog,
 
 # Import our custom 7z-based archive handler
 from utils import archive7z
+from utils.gui.main_window import center_dialog_on_parent_screen
+from utils.gui.helpers import apply_scaling_to_dialog
 
 class ArchivePreviewDialog(QDialog):
     """Dialog for displaying archive contents"""
@@ -44,13 +47,26 @@ class ArchivePreviewDialog(QDialog):
         self.result_queue = Queue()
         self.ui_lock = Lock()
         self.max_workers = min(32, os.cpu_count() * 4)  # Adjust based on system
+        self._original_widget_fonts = {} # Initialize dictionary for original fonts
             
         self.init_ui()
         self.load_archive_contents()
         
+        # Center the dialog on the parent's screen
+        center_dialog_on_parent_screen(self, self.parent)
+        
+        # Apply scaling by finding the main application window and its scale factor
+        scale_factor = 1.0  # Default scale
+        for widget in QApplication.topLevelWidgets():
+            if isinstance(widget, QMainWindow) and hasattr(widget, 'current_font_scale'):
+                scale_factor = widget.current_font_scale
+                break # Assume this is the main window
+        
+        apply_scaling_to_dialog(self, scale_factor, self._original_widget_fonts)
+        
     def init_ui(self):
         self.setWindowTitle(f"Archive Preview: {self.archive_name}")
-        self.setGeometry(100, 100, 900, 600)
+        self.resize(900, 600)
         
         # Main layout
         layout = QVBoxLayout()

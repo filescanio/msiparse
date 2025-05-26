@@ -35,6 +35,18 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/gui",
             "args": []
+        },
+        {
+            "name": "PyTest",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "${file}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {}
         }
     ]
 }

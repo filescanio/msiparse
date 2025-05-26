@@ -5,7 +5,7 @@ Streams tab functionality for the MSI Parser GUI
 import json
 import tempfile
 import shutil
-from PyQt5.QtWidgets import QTreeWidgetItem, QMenu, QAction
+from PyQt5.QtWidgets import QMenu, QAction
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QApplication
@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import QApplication
 from threads.identifystreams import IdentifyStreamsThread
 from utils.gui.preview import show_hex_view, show_text_preview, show_image_preview, show_archive_preview, show_pdf_preview
 from utils.gui.extraction import extract_single_stream
-from utils.common import NumericTreeWidgetItem, format_file_size
+from utils.common import NumericTreeWidgetItem
 
 def list_streams(parent):
     """List MSI streams"""
